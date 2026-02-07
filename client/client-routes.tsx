@@ -338,7 +338,7 @@ function LoginForm(handle: Handle, setup: LoginFormSetup = {}) {
 				</form>
 				<div css={{ display: 'grid', gap: spacing.sm }}>
 					<a
-						href={isSignup ? '/login' : '/signup'}
+						href={buildAuthPath(isSignup ? 'login' : 'signup', redirectTo)}
 						on={{
 							click: (event) => {
 								if (event.defaultPrevented) return
