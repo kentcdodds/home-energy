@@ -49,9 +49,10 @@ async function enforceRateLimit(
 
 	const now = Date.now()
 	const key = `rate-limit:${url.pathname}:${ip}`
-	const stored = (await env.OAUTH_KV.get(key, 'json')) as
-		| { count: number; reset: number }
-		| null
+	const stored = (await env.OAUTH_KV.get(key, 'json')) as {
+		count: number
+		reset: number
+	} | null
 	const windowReset = now + rateLimitWindowMs
 	const state =
 		!stored || now > stored.reset ? { count: 0, reset: windowReset } : stored
@@ -61,10 +62,7 @@ async function enforceRateLimit(
 	})
 
 	if (state.count > rateLimitMax) {
-		const retryAfterSeconds = Math.max(
-			1,
-			Math.ceil((state.reset - now) / 1000),
-		)
+		const retryAfterSeconds = Math.max(1, Math.ceil((state.reset - now) / 1000))
 		void logAuditEvent({
 			category: 'auth',
 			action: 'rate_limit',
@@ -82,9 +80,7 @@ async function enforceRateLimit(
 		return new Response(body, {
 			status: 429,
 			headers: {
-				'Content-Type': wantsJson(request)
-					? 'application/json'
-					: 'text/plain',
+				'Content-Type': wantsJson(request) ? 'application/json' : 'text/plain',
 				'Retry-After': String(retryAfterSeconds),
 			},
 		})

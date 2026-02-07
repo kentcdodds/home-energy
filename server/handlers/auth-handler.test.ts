@@ -67,7 +67,11 @@ async function createUser(
 	return record.id
 }
 
-function createAuthRequest(body: unknown, url: string, handler: ReturnType<typeof createAuthHandler>) {
+function createAuthRequest(
+	body: unknown,
+	url: string,
+	handler: ReturnType<typeof createAuthHandler>,
+) {
 	const request = new Request(url, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },

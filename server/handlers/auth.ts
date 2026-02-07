@@ -49,7 +49,8 @@ export function createAuthHandler(appEnv: AppEnv) {
 			}
 
 			const { email, password, mode } = body as Record<string, unknown>
-			const normalizedEmail = typeof email === 'string' ? normalizeEmail(email) : ''
+			const normalizedEmail =
+				typeof email === 'string' ? normalizeEmail(email) : ''
 			const normalizedPassword = typeof password === 'string' ? password : ''
 			const normalizedMode =
 				typeof mode === 'string' && isAuthMode(mode) ? mode : null

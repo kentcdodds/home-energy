@@ -102,7 +102,12 @@ export async function verifyPassword(
 		if (!iterations || iterations < 1 || !salt || !hash) {
 			return { valid: false }
 		}
-		const derived = await derivePasswordKey(password, salt, iterations, hash.length)
+		const derived = await derivePasswordKey(
+			password,
+			salt,
+			iterations,
+			hash.length,
+		)
 		return { valid: timingSafeEqual(derived, hash) }
 	}
 
