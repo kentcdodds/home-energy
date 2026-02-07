@@ -150,7 +150,7 @@ function LoginForm(handle: Handle, setup: LoginFormSetup = {}) {
 
 		sessionStatus = 'ready'
 		if (sessionEmail && typeof window !== 'undefined') {
-			window.location.assign('/account')
+			window.location.assign(redirectTarget)
 			return
 		}
 		handle.update()

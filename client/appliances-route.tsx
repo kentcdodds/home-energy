@@ -128,6 +128,8 @@ function AppliancesPage(handle: Handle) {
 		message = null
 	}
 
+	handle.queueTask(loadAppliances)
+
 	async function submitForm(body: URLSearchParams): Promise<boolean> {
 		let didSucceed = false
 		if (isSubmitting) return false
@@ -214,9 +216,6 @@ function AppliancesPage(handle: Handle) {
 	}
 
 	return () => {
-		if (status === 'loading') {
-			handle.queueTask(loadAppliances)
-		}
 		return (
 			<section css={{ display: 'grid', gap: spacing.xl }}>
 				<header css={{ display: 'grid', gap: spacing.xs }}>
