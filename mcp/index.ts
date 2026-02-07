@@ -41,6 +41,7 @@ export type Props = {
 	user?: TokenSummary['grant']['props']
 }
 export class MCP extends McpAgent<Env, State, Props> {
+	// Cast to the agent SDK type to avoid duplicate SDK type conflicts.
 	server = new McpServer(
 		{
 			name: 'MCP',
@@ -50,7 +51,7 @@ export class MCP extends McpAgent<Env, State, Props> {
 			instructions:
 				'Use this server to manage appliance energy data for the authenticated user.',
 		},
-	)
+	) as unknown as McpAgent<Env, State, Props>['server']
 	async init() {
 		await registerTools(this)
 	}
