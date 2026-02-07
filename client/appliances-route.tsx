@@ -13,6 +13,7 @@ type Appliance = {
 	id: number
 	name: string
 	watts: number
+	notes: string | null
 	created_at: string
 }
 
@@ -253,6 +254,31 @@ function AppliancesPage(handle: Handle) {
 								}}
 							/>
 						</label>
+						<label css={{ display: 'grid', gap: spacing.xs }}>
+							<span
+								css={{
+									color: colors.text,
+									fontWeight: typography.fontWeight.medium,
+									fontSize: typography.fontSize.sm,
+								}}
+							>
+								Notes (optional)
+							</span>
+							<textarea
+								name="notes"
+								rows={3}
+								maxLength={500}
+								placeholder="Located near the kitchen outlet."
+								css={{
+									padding: spacing.sm,
+									borderRadius: radius.md,
+									border: `1px solid ${colors.border}`,
+									fontSize: typography.fontSize.base,
+									fontFamily: typography.fontFamily,
+									resize: 'vertical',
+								}}
+							/>
+						</label>
 						<div css={{ display: 'grid', gap: spacing.sm }}>
 							<label css={{ display: 'grid', gap: spacing.xs }}>
 								<span
@@ -431,6 +457,17 @@ function AppliancesPage(handle: Handle) {
 									<span css={{ color: colors.textMuted }}>
 										{appliance.watts} W
 									</span>
+									{appliance.notes ? (
+										<span
+											css={{
+												color: colors.textMuted,
+												fontSize: typography.fontSize.sm,
+												whiteSpace: 'pre-wrap',
+											}}
+										>
+											{appliance.notes}
+										</span>
+									) : null}
 								</div>
 								<form on={{ submit: handleDelete }}>
 									<input type="hidden" name="id" value={appliance.id} />

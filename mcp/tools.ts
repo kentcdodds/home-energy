@@ -6,6 +6,7 @@ type ApplianceSummary = {
 	id: number
 	name: string
 	watts: number
+	notes: string | null
 	created_at: string
 }
 
@@ -14,6 +15,7 @@ type ApplianceInput = {
 	watts?: number
 	amps?: number
 	volts?: number
+	notes?: string
 }
 
 const applianceInputSchema = z
@@ -22,6 +24,10 @@ const applianceInputSchema = z
 		watts: z.number().positive().optional(),
 		amps: z.number().positive().optional(),
 		volts: z.number().positive().optional(),
+		notes: z
+			.string()
+			.max(500, 'Notes must be 500 characters or fewer.')
+			.optional(),
 	})
 	.refine(
 		(data) => data.watts != null || (data.amps != null && data.volts != null),
@@ -56,12 +62,18 @@ function toSummary(record: ApplianceSummary) {
 		id: record.id,
 		name: record.name,
 		watts: record.watts,
+		notes: record.notes,
 		created_at: record.created_at,
 	}
 }
 
 function resolveWatts(input: ApplianceInput) {
 	return input.watts ?? input.amps! * input.volts!
+}
+
+function resolveNotes(input: ApplianceInput) {
+	const normalized = input.notes?.trim()
+	return normalized ? normalized : null
 }
 
 function createStore(agent: MCP) {
@@ -72,7 +84,7 @@ export async function registerTools(agent: MCP) {
 	agent.server.registerTool(
 		'list_appliances',
 		{
-			description: 'List appliances and return the total watts.',
+			description: 'List appliances (including notes) and return total watts.',
 			inputSchema: {},
 			annotations: { readOnlyHint: true },
 		},
@@ -130,8 +142,7 @@ export async function registerTools(agent: MCP) {
 	agent.server.registerTool(
 		'add_appliances',
 		{
-			description:
-				'Add appliances and return the updated list and total watts.',
+			description: 'Add appliances with optional notes and return totals.',
 			inputSchema: {
 				appliances: z.array(applianceInputSchema).min(1),
 			},
@@ -143,10 +154,12 @@ export async function registerTools(agent: MCP) {
 			const created = await Promise.all(
 				appliances.map(async (appliance) => {
 					const watts = resolveWatts(appliance)
+					const notes = resolveNotes(appliance)
 					return store.create({
 						ownerId,
 						name: appliance.name,
 						watts,
+						notes,
 					})
 				}),
 			)

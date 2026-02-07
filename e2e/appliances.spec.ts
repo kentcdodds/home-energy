@@ -29,9 +29,11 @@ test('manages appliances and totals', async ({ page }) => {
 	const runId = Date.now()
 	const heaterName = `Space heater ${runId}`
 	const fanName = `Fan ${runId}`
+	const heaterNotes = `Near the living room outlet ${runId}`
 	const startingTotal = await readTotalWatts(page)
 
 	await page.getByLabel('Appliance name').fill(heaterName)
+	await page.getByLabel('Notes (optional)').fill(heaterNotes)
 	await page.getByLabel('Watts').fill('1500')
 	await Promise.all([
 		page.waitForNavigation(),
@@ -46,6 +48,12 @@ test('manages appliances and totals', async ({ page }) => {
 			.getByRole('listitem')
 			.filter({ hasText: heaterName })
 			.getByText('1500 W'),
+	).toBeVisible()
+	await expect(
+		page
+			.getByRole('listitem')
+			.filter({ hasText: heaterName })
+			.getByText(heaterNotes),
 	).toBeVisible()
 
 	await expect(page.getByRole('heading', { name: 'Appliances' })).toBeVisible()

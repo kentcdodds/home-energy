@@ -120,6 +120,18 @@ async function createTestDatabase() {
 		'--file',
 		'migrations/0002-appliances.sql',
 	])
+	await runWrangler([
+		'd1',
+		'execute',
+		'APP_DB',
+		'--local',
+		'--env',
+		'test',
+		'--persist-to',
+		persistDir,
+		'--file',
+		'migrations/0003-appliance-notes.sql',
+	])
 
 	const passwordHash = await createPasswordHash(user.password)
 	const username = user.email.split('@')[0] || 'user'
@@ -491,7 +503,7 @@ test(
 			name: 'add_appliances',
 			arguments: {
 				appliances: [
-					{ name: 'Toaster', watts: 800 },
+					{ name: 'Toaster', watts: 800, notes: 'Counter outlet.' },
 					{ name: 'Lamp', amps: 1.2, volts: 120 },
 				],
 			},
@@ -500,11 +512,17 @@ test(
 		const addOutput = getStructuredOutput(addResult)
 		const addJson = addOutput as {
 			ok: boolean
-			added: Array<{ id: number; name: string; watts: number }>
+			added: Array<{
+				id: number
+				name: string
+				watts: number
+				notes: string | null
+			}>
 			totalWatts: number
 		}
 		expect(addJson.ok).toBe(true)
 		expect(addJson.added.length).toBe(2)
+		expect(addJson.added[0]?.notes).toBe('Counter outlet.')
 		expect(addJson.totalWatts).toBe(944)
 
 		const listResult = (await mcpClient.client.callTool({
@@ -513,11 +531,19 @@ test(
 		})) as CallToolResult
 		const listJson = getStructuredOutput(listResult) as {
 			ok: boolean
-			appliances: Array<{ id: number; name: string; watts: number }>
+			appliances: Array<{
+				id: number
+				name: string
+				watts: number
+				notes: string | null
+			}>
 			totalWatts: number
 		}
 		expect(listJson.ok).toBe(true)
 		expect(listJson.appliances.length).toBe(2)
+		expect(
+			listJson.appliances.find((item) => item.name === 'Toaster')?.notes,
+		).toBe('Counter outlet.')
 		expect(listJson.totalWatts).toBe(944)
 
 		const totalResult = (await mcpClient.client.callTool({

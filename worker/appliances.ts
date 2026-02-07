@@ -6,6 +6,7 @@ const applianceSchema = z.object({
 	owner_id: z.number(),
 	name: z.string(),
 	watts: z.number(),
+	notes: z.string().nullable(),
 	created_at: z.string(),
 })
 
@@ -15,6 +16,7 @@ type ApplianceInsert = {
 	ownerId: number
 	name: string
 	watts: number
+	notes?: string | null
 }
 
 type ApplianceUpdate = {
@@ -22,6 +24,7 @@ type ApplianceUpdate = {
 	ownerId: number
 	name: string
 	watts: number
+	notes?: string | null
 }
 
 type ApplianceLookup = {
@@ -41,11 +44,12 @@ export function createApplianceStore(
 	db: ReturnType<typeof createDb>,
 ): ApplianceStore {
 	async function create(input: ApplianceInsert) {
+		const notes = input.notes ?? null
 		const record = await db.queryFirst(
 			sql`
-				INSERT INTO appliances (owner_id, name, watts)
-				VALUES (${input.ownerId}, ${input.name}, ${input.watts})
-				RETURNING id, owner_id, name, watts, created_at
+				INSERT INTO appliances (owner_id, name, watts, notes)
+				VALUES (${input.ownerId}, ${input.name}, ${input.watts}, ${notes})
+				RETURNING id, owner_id, name, watts, notes, created_at
 			`,
 			applianceSchema,
 		)
@@ -58,7 +62,7 @@ export function createApplianceStore(
 	function getById(input: ApplianceLookup) {
 		return db.queryFirst(
 			sql`
-				SELECT id, owner_id, name, watts, created_at
+				SELECT id, owner_id, name, watts, notes, created_at
 				FROM appliances
 				WHERE id = ${input.id} AND owner_id = ${input.ownerId}
 				LIMIT 1
@@ -70,7 +74,7 @@ export function createApplianceStore(
 	function listByOwner(ownerId: number) {
 		return db.queryAll(
 			sql`
-				SELECT id, owner_id, name, watts, created_at
+				SELECT id, owner_id, name, watts, notes, created_at
 				FROM appliances
 				WHERE owner_id = ${ownerId}
 				ORDER BY created_at DESC, id DESC
@@ -80,12 +84,13 @@ export function createApplianceStore(
 	}
 
 	function update(input: ApplianceUpdate) {
+		const notes = input.notes ?? null
 		return db.queryFirst(
 			sql`
 				UPDATE appliances
-				SET name = ${input.name}, watts = ${input.watts}
+				SET name = ${input.name}, watts = ${input.watts}, notes = ${notes}
 				WHERE id = ${input.id} AND owner_id = ${input.ownerId}
-				RETURNING id, owner_id, name, watts, created_at
+				RETURNING id, owner_id, name, watts, notes, created_at
 			`,
 			applianceSchema,
 		)

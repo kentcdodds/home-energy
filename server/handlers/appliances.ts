@@ -13,6 +13,7 @@ type ApplianceListResponse = {
 		id: number
 		name: string
 		watts: number
+		notes: string | null
 		created_at: string
 	}>
 	totalWatts: number
@@ -24,6 +25,10 @@ const createSchema = z
 		watts: z.number().positive().optional(),
 		amps: z.number().positive().optional(),
 		volts: z.number().positive().optional(),
+		notes: z
+			.string()
+			.max(500, 'Notes must be 500 characters or fewer.')
+			.optional(),
 	})
 	.refine(
 		(data) => data.watts != null || (data.amps != null && data.volts != null),
@@ -60,6 +65,12 @@ function parseNumber(value: FormDataEntryValue | null) {
 	if (!normalized) return undefined
 	const numberValue = Number(normalized)
 	return Number.isFinite(numberValue) ? numberValue : undefined
+}
+
+function parseOptionalText(value: FormDataEntryValue | null) {
+	if (typeof value !== 'string') return undefined
+	const normalized = value.trim()
+	return normalized ? normalized : undefined
 }
 
 function normalizeEmail(email: string) {
@@ -103,7 +114,13 @@ function sortAppliances(list: ApplianceListResponse['appliances']) {
 }
 
 function summarizeAppliances(
-	list: Array<{ id: number; name: string; watts: number; created_at: string }>,
+	list: Array<{
+		id: number
+		name: string
+		watts: number
+		notes: string | null
+		created_at: string
+	}>,
 ) {
 	const sorted = sortAppliances(list)
 	const totalWatts = sorted.reduce((total, item) => total + item.watts, 0)
@@ -178,6 +195,7 @@ export function createAppliancesHandlers(appEnv: AppEnv) {
 					watts: parseNumber(formData.get('watts')),
 					amps: parseNumber(formData.get('amps')),
 					volts: parseNumber(formData.get('volts')),
+					notes: parseOptionalText(formData.get('notes')),
 				}
 				const result = createSchema.safeParse(payload)
 				if (!result.success) {
@@ -189,10 +207,12 @@ export function createAppliancesHandlers(appEnv: AppEnv) {
 
 				const watts =
 					result.data.watts ?? result.data.amps! * result.data.volts!
+				const notes = result.data.notes ?? null
 				await store.create({
 					ownerId,
 					name: result.data.name,
 					watts,
+					notes,
 				})
 			} else if (intent === 'delete') {
 				const payload = { id: parseNumber(formData.get('id')) }
