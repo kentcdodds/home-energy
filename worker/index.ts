@@ -37,7 +37,7 @@ function wantsJson(request: Request) {
 
 function missingOauthKvResponse(request: Request) {
 	const message = `Missing required OAUTH_KV binding. Add a KV namespace bound as "OAUTH_KV" in wrangler.jsonc and redeploy. See ${oauthKvDocsUrl}`
-	console.error('OAUTH_KV binding is missing; rate limiting disabled.')
+	console.error('OAUTH_KV binding is missing; refusing all requests.')
 	const body = wantsJson(request)
 		? JSON.stringify({ ok: false, error: message })
 		: message
