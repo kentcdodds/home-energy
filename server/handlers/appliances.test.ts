@@ -36,8 +36,12 @@ async function createTestDatabase() {
 	const applianceMigration = await Bun.file(
 		join(projectRoot, 'migrations', '0002-appliances.sql'),
 	).text()
+	const applianceNotesMigration = await Bun.file(
+		join(projectRoot, 'migrations', '0003-appliance-notes.sql'),
+	).text()
 	await runMigration(appDb, userMigration)
 	await runMigration(appDb, applianceMigration)
+	await runMigration(appDb, applianceNotesMigration)
 
 	return {
 		appDb,
@@ -148,7 +152,7 @@ test('create and delete appliances updates totals and sorting', async () => {
 	const cookie = await createSessionCookie(email)
 	type AppliancesListPayload = {
 		totalWatts: number
-		appliances: Array<{ id: number; name: string }>
+		appliances: Array<{ id: number; name: string; notes: string | null }>
 	}
 
 	function createRequest(data: Record<string, string>) {
@@ -169,6 +173,7 @@ test('create and delete appliances updates totals and sorting', async () => {
 			name: 'Toaster',
 			amps: '5',
 			volts: '120',
+			notes: 'Pantry shelf.',
 		}),
 	} as never)
 	expect(firstResponse.status).toBe(200)
@@ -192,6 +197,9 @@ test('create and delete appliances updates totals and sorting', async () => {
 	expect(
 		listPayload.appliances.map((item: { name: string }) => item.name),
 	).toEqual(['Microwave', 'Toaster'])
+	expect(
+		listPayload.appliances.find((item) => item.name === 'Toaster')?.notes,
+	).toBe('Pantry shelf.')
 	const [firstAppliance] = listPayload.appliances
 	if (!firstAppliance) {
 		throw new Error('Expected at least one appliance in list response.')

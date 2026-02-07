@@ -35,8 +35,12 @@ async function createTestDatabase() {
 	const applianceMigration = await Bun.file(
 		join(projectRoot, 'migrations', '0002-appliances.sql'),
 	).text()
+	const applianceNotesMigration = await Bun.file(
+		join(projectRoot, 'migrations', '0003-appliance-notes.sql'),
+	).text()
 	await runMigration(appDb, userMigration)
 	await runMigration(appDb, applianceMigration)
+	await runMigration(appDb, applianceNotesMigration)
 
 	return {
 		appDb,
@@ -77,11 +81,13 @@ test('appliance helpers create, list, update, and delete', async () => {
 		ownerId,
 		name: 'Toaster',
 		watts: 800,
+		notes: 'Near the pantry.',
 	})
 	const second = await store.create({
 		ownerId,
 		name: 'Microwave',
 		watts: 1200,
+		notes: null,
 	})
 	await store.create({
 		ownerId: otherOwnerId,
@@ -94,17 +100,23 @@ test('appliance helpers create, list, update, and delete', async () => {
 	expect(list.every((item) => item.owner_id === ownerId)).toBe(true)
 	expect(list.map((item) => item.id)).toContain(first.id)
 	expect(list.map((item) => item.id)).toContain(second.id)
+	expect(list.find((item) => item.id === first.id)?.notes).toBe(
+		'Near the pantry.',
+	)
 
 	const fetched = await store.getById({ id: first.id, ownerId })
 	expect(fetched?.watts).toBe(800)
+	expect(fetched?.notes).toBe('Near the pantry.')
 
 	const updated = await store.update({
 		id: first.id,
 		ownerId,
 		name: 'Toaster XL',
 		watts: 900,
+		notes: 'Moved to the garage.',
 	})
 	expect(updated?.watts).toBe(900)
+	expect(updated?.notes).toBe('Moved to the garage.')
 
 	await store.remove({ id: first.id, ownerId })
 	const afterDelete = await store.getById({ id: first.id, ownerId })
