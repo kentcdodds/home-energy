@@ -21,6 +21,43 @@ export function sql<Params extends ReadonlyArray<D1Value>>(
 	return { sql: sqlText, params }
 }
 
+const writeRetryDelaysMs = [50, 150, 300]
+
+function isWriteQuery(sqlText: string) {
+	return /^(insert|update|delete|replace|create|drop|alter)\b/i.test(
+		sqlText.trim(),
+	)
+}
+
+function isWriteDisabledError(error: unknown) {
+	return (
+		error instanceof Error &&
+		/write action is temporarily disabled/i.test(error.message)
+	)
+}
+
+function sleep(delayMs: number) {
+	return new Promise((resolve) => setTimeout(resolve, delayMs))
+}
+
+async function withWriteRetry<T>(action: () => Promise<T>) {
+	let lastError: unknown = null
+	for (const delayMs of [0, ...writeRetryDelaysMs]) {
+		if (delayMs) {
+			await sleep(delayMs)
+		}
+		try {
+			return await action()
+		} catch (error) {
+			if (!isWriteDisabledError(error)) {
+				throw error
+			}
+			lastError = error
+		}
+	}
+	throw lastError ?? new Error('Write retry failed with unknown error')
+}
+
 export function createDb(db: D1Database) {
 	function prepare<Params extends ReadonlyArray<D1Value>>(
 		query: DbQuery<Params>,
@@ -33,7 +70,9 @@ export function createDb(db: D1Database) {
 			query: DbQuery<Params>,
 			schema: ZodSchema<T>,
 		): Promise<T | null> {
-			const row = await prepare(query).first()
+			const row = isWriteQuery(query.sql)
+				? await withWriteRetry(() => prepare(query).first())
+				: await prepare(query).first()
 			if (!row) return null
 			return schema.parse(row) as T
 		},
@@ -46,7 +85,10 @@ export function createDb(db: D1Database) {
 			return schema.array().parse(rows) as Array<T>
 		},
 		async exec<Params extends ReadonlyArray<D1Value>>(query: DbQuery<Params>) {
-			return prepare(query).run()
+			if (!isWriteQuery(query.sql)) {
+				return prepare(query).run()
+			}
+			return withWriteRetry(() => prepare(query).run())
 		},
 	}
 }
