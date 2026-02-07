@@ -69,7 +69,12 @@ function createStore(agent: MCP) {
 }
 
 export async function registerTools(agent: MCP) {
-	agent.server.registerTool(
+	const server = await agent.server
+	if (!('registerTool' in server)) {
+		throw new Error('MCP server does not support tool registration.')
+	}
+
+	server.registerTool(
 		'list_appliances',
 		{
 			description: 'List appliances and return the total watts.',
@@ -97,7 +102,7 @@ export async function registerTools(agent: MCP) {
 		},
 	)
 
-	agent.server.registerTool(
+	server.registerTool(
 		'get_total_watts',
 		{
 			description: 'Get the total watts for the current appliance list.',
@@ -127,7 +132,7 @@ export async function registerTools(agent: MCP) {
 		},
 	)
 
-	agent.server.registerTool(
+	server.registerTool(
 		'add_appliances',
 		{
 			description:
@@ -172,7 +177,7 @@ export async function registerTools(agent: MCP) {
 		},
 	)
 
-	agent.server.registerTool(
+	server.registerTool(
 		'delete_appliances',
 		{
 			description: 'Delete appliances by id and return the updated list.',
