@@ -85,10 +85,14 @@ export function createApplianceStore(
 
 	function update(input: ApplianceUpdate) {
 		const notes = input.notes ?? null
+		const hasNotes = input.notes !== undefined
 		return db.queryFirst(
 			sql`
 				UPDATE appliances
-				SET name = ${input.name}, watts = ${input.watts}, notes = ${notes}
+				SET name = ${input.name}, watts = ${input.watts}, notes = CASE
+					WHEN ${hasNotes} THEN ${notes}
+					ELSE notes
+				END
 				WHERE id = ${input.id} AND owner_id = ${input.ownerId}
 				RETURNING id, owner_id, name, watts, notes, created_at
 			`,
