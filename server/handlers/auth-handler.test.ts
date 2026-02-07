@@ -13,6 +13,7 @@ import { createAuthHandler } from './auth.ts'
 import { createDb, sql } from '../../worker/db.ts'
 
 const projectRoot = fileURLToPath(new URL('../..', import.meta.url))
+const testCookieSecret = 'test-cookie-secret-0123456789abcdef0123456789'
 
 async function runMigration(db: D1Database, sqlText: string) {
 	const statements = sqlText
@@ -85,12 +86,12 @@ function createAuthRequest(
 }
 
 beforeAll(() => {
-	setAuthSessionSecret('test-cookie-secret-0123456789abcdef0123456789')
+	setAuthSessionSecret(testCookieSecret)
 })
 
 test('auth handler returns 400 for invalid JSON', async () => {
 	await using database = await createTestDatabase()
-	const appEnv = { COOKIE_SECRET: 'test-secret', APP_DB: database.appDb }
+	const appEnv = { COOKIE_SECRET: testCookieSecret, APP_DB: database.appDb }
 	const handler = createAuthHandler(appEnv)
 	const authRequest = createAuthRequest('{', 'http://example.com/auth', handler)
 	const response = await authRequest.run()
@@ -101,7 +102,7 @@ test('auth handler returns 400 for invalid JSON', async () => {
 
 test('auth handler returns 400 for missing fields', async () => {
 	await using database = await createTestDatabase()
-	const appEnv = { COOKIE_SECRET: 'test-secret', APP_DB: database.appDb }
+	const appEnv = { COOKIE_SECRET: testCookieSecret, APP_DB: database.appDb }
 	const handler = createAuthHandler(appEnv)
 	const authRequest = createAuthRequest(
 		{ email: 'a@b.com' },
@@ -118,7 +119,7 @@ test('auth handler returns 400 for missing fields', async () => {
 
 test('auth handler creates accounts for signup', async () => {
 	await using database = await createTestDatabase()
-	const appEnv = { COOKIE_SECRET: 'test-secret', APP_DB: database.appDb }
+	const appEnv = { COOKIE_SECRET: testCookieSecret, APP_DB: database.appDb }
 	const handler = createAuthHandler(appEnv)
 	const authRequest = createAuthRequest(
 		{ email: 'new@example.com', password: 'secret', mode: 'signup' },
@@ -139,7 +140,7 @@ test('auth handler creates accounts for signup', async () => {
 
 test('auth handler returns ok with a session cookie for login', async () => {
 	await using database = await createTestDatabase()
-	const appEnv = { COOKIE_SECRET: 'test-secret', APP_DB: database.appDb }
+	const appEnv = { COOKIE_SECRET: testCookieSecret, APP_DB: database.appDb }
 	const handler = createAuthHandler(appEnv)
 	const db = createDb(database.appDb)
 	await createUser(db, 'a@b.com', 'secret')
@@ -158,7 +159,7 @@ test('auth handler returns ok with a session cookie for login', async () => {
 
 test('auth handler sets Secure cookie over https', async () => {
 	await using database = await createTestDatabase()
-	const appEnv = { COOKIE_SECRET: 'test-secret', APP_DB: database.appDb }
+	const appEnv = { COOKIE_SECRET: testCookieSecret, APP_DB: database.appDb }
 	const handler = createAuthHandler(appEnv)
 	const db = createDb(database.appDb)
 	await createUser(db, 'secure@example.com', 'secret')
