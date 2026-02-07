@@ -104,10 +104,6 @@ const appHandler = withCors({
 	},
 	async handler(request, env, ctx) {
 		const url = new URL(request.url)
-		const rateLimitResponse = await enforceRateLimit(request, env, url)
-		if (rateLimitResponse) {
-			return rateLimitResponse
-		}
 
 		if (url.pathname === oauthPaths.authorize) {
 			return handleAuthorizeRequest(request, env)
@@ -168,7 +164,12 @@ const oauthProvider = new OAuthProvider({
 })
 
 export default {
-	fetch(request: Request, env: Env, ctx: ExecutionContext) {
+	async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+		const url = new URL(request.url)
+		const rateLimitResponse = await enforceRateLimit(request, env, url)
+		if (rateLimitResponse) {
+			return rateLimitResponse
+		}
 		return oauthProvider.fetch(request, env, ctx)
 	},
 } satisfies ExportedHandler<Env>

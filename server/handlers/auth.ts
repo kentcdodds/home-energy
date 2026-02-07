@@ -27,6 +27,12 @@ function normalizeEmail(email: string) {
 	return email.trim().toLowerCase()
 }
 
+function isUniqueConstraintError(error: unknown) {
+	return (
+		error instanceof Error && /unique constraint failed/i.test(error.message)
+	)
+}
+
 const userLookupSchema = z.object({ id: z.number(), password_hash: z.string() })
 const userIdSchema = z.object({ id: z.number() })
 
@@ -95,14 +101,34 @@ export function createAuthHandler(appEnv: AppEnv) {
 
 				const passwordHash = await createPasswordHash(normalizedPassword)
 				const username = normalizedEmail
-				const record = await db.queryFirst(
-					sql`
-						INSERT INTO users (username, email, password_hash)
-						VALUES (${username}, ${normalizedEmail}, ${passwordHash})
-						RETURNING id
-					`,
-					userIdSchema,
-				)
+				let record: { id: number } | null = null
+				try {
+					record = await db.queryFirst(
+						sql`
+							INSERT INTO users (username, email, password_hash)
+							VALUES (${username}, ${normalizedEmail}, ${passwordHash})
+							RETURNING id
+						`,
+						userIdSchema,
+					)
+				} catch (error) {
+					if (isUniqueConstraintError(error)) {
+						void logAuditEvent({
+							category: 'auth',
+							action: 'signup',
+							result: 'failure',
+							email: normalizedEmail,
+							ip: requestIp,
+							path: new URL(request.url).pathname,
+							reason: 'email_exists',
+						})
+						return jsonResponse(
+							{ error: 'Email already registered.' },
+							{ status: 409 },
+						)
+					}
+					throw error
+				}
 				if (!record) {
 					void logAuditEvent({
 						category: 'auth',

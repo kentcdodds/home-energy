@@ -1,14 +1,10 @@
+import { toHex } from './hex.ts'
+
 const passwordHashPrefix = 'pbkdf2_sha256'
 const passwordSaltBytes = 16
 const passwordHashBytes = 32
 const passwordHashIterations = 120_000
 const legacyPasswordHashPattern = /^[0-9a-f]{64}$/i
-
-function toHex(bytes: Uint8Array) {
-	return Array.from(bytes)
-		.map((value) => value.toString(16).padStart(2, '0'))
-		.join('')
-}
 
 function fromHex(value: string): Uint8Array<ArrayBuffer> | null {
 	const normalized = value.trim().toLowerCase()

@@ -1,3 +1,5 @@
+import { toHex } from './hex.ts'
+
 type AuditEvent = {
 	category: 'auth' | 'oauth'
 	action: string
@@ -7,12 +9,6 @@ type AuditEvent = {
 	clientId?: string
 	path?: string
 	reason?: string
-}
-
-function toHex(bytes: Uint8Array) {
-	return Array.from(bytes)
-		.map((value) => value.toString(16).padStart(2, '0'))
-		.join('')
 }
 
 async function hashIdentifier(value: string) {
