@@ -11,7 +11,7 @@ import { getEnv } from '../server/env.ts'
 import { Layout } from '../server/layout.ts'
 import { render } from '../server/render.ts'
 import { createDb, sql } from './db.ts'
-import { verifyPassword } from '../server/password-hash.ts'
+import { toHex, verifyPassword } from '../server/password-hash.ts'
 
 export const oauthPaths = {
 	authorize: '/oauth/authorize',
@@ -43,12 +43,6 @@ function renderSpaShell(status = 200) {
 }
 
 const userRecordSchema = z.object({ password_hash: z.string() })
-
-function toHex(bytes: Uint8Array) {
-	return Array.from(bytes)
-		.map((value) => value.toString(16).padStart(2, '0'))
-		.join('')
-}
 
 async function createUserId(email: string) {
 	const normalized = email.trim().toLowerCase()
