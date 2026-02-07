@@ -392,7 +392,7 @@ function AppliancesPage(handle: Handle) {
 							Loading appliances…
 						</p>
 					) : null}
-					{status !== 'loading' && appliances.length === 0 ? (
+					{status === 'ready' && appliances.length === 0 ? (
 						<p css={{ margin: 0, color: colors.textMuted }}>
 							No appliances added yet.
 						</p>
