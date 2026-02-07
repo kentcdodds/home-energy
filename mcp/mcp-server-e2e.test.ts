@@ -108,6 +108,18 @@ async function createTestDatabase() {
 		'--file',
 		'migrations/0001-init.sql',
 	])
+	await runWrangler([
+		'd1',
+		'execute',
+		'APP_DB',
+		'--local',
+		'--env',
+		'test',
+		'--persist-to',
+		persistDir,
+		'--file',
+		'migrations/0002-appliances.sql',
+	])
 
 	const passwordHash = await createPasswordHash(user.password)
 	const username = user.email.split('@')[0] || 'user'
@@ -173,6 +185,33 @@ function formatOutput(stdout: string, stderr: string) {
 		snippets.push(`stderr: ${stderr.trim().slice(-2000)}`)
 	}
 	return snippets.length > 0 ? ` Output:\n${snippets.join('\n')}` : ''
+}
+
+function getTextOutput(result: CallToolResult) {
+	return (
+		result.content.find(
+			(item): item is Extract<ContentBlock, { type: 'text' }> =>
+				item.type === 'text',
+		)?.text ?? ''
+	)
+}
+
+function getStructuredOutput(result: CallToolResult) {
+	const structured = (result as { structuredContent?: unknown })
+		.structuredContent
+	if (structured) return structured
+
+	const jsonText = result.content.find(
+		(item): item is Extract<ContentBlock, { type: 'text' }> =>
+			item.type === 'text' && item.text.trim().startsWith('{'),
+	)?.text
+	if (!jsonText) return null
+
+	try {
+		return JSON.parse(jsonText) as unknown
+	} catch {
+		return null
+	}
 }
 
 async function waitForServer(
@@ -433,34 +472,85 @@ test(
 		const result = await mcpClient.client.listTools()
 		const toolNames = result.tools.map((tool) => tool.name)
 
-		expect(toolNames).toContain('do_math')
+		expect(toolNames).toContain('list_appliances')
+		expect(toolNames).toContain('get_total_watts')
+		expect(toolNames).toContain('add_appliances')
+		expect(toolNames).toContain('delete_appliances')
 	},
 	{ timeout: defaultTimeoutMs },
 )
 
 test(
-	'mcp server executes do_math tool',
+	'mcp server manages appliances via tools',
 	async () => {
 		await using database = await createTestDatabase()
 		await using server = await startDevServer(database.persistDir)
 		await using mcpClient = await createMcpClient(server.origin, database.user)
 
-		const result = await mcpClient.client.callTool({
-			name: 'do_math',
+		const addResult = (await mcpClient.client.callTool({
+			name: 'add_appliances',
 			arguments: {
-				left: 8,
-				right: 4,
-				operator: '+',
+				appliances: [
+					{ name: 'Toaster', watts: 800 },
+					{ name: 'Lamp', amps: 1.2, volts: 120 },
+				],
 			},
-		})
+		})) as CallToolResult
 
-		const textOutput =
-			(result as CallToolResult).content.find(
-				(item): item is Extract<ContentBlock, { type: 'text' }> =>
-					item.type === 'text',
-			)?.text ?? ''
+		const addOutput = getStructuredOutput(addResult)
+		const addJson = addOutput as {
+			ok: boolean
+			added: Array<{ id: number; name: string; watts: number }>
+			totalWatts: number
+		}
+		expect(addJson.ok).toBe(true)
+		expect(addJson.added.length).toBe(2)
+		expect(addJson.totalWatts).toBe(944)
 
-		expect(textOutput).toContain('12')
+		const listResult = (await mcpClient.client.callTool({
+			name: 'list_appliances',
+			arguments: {},
+		})) as CallToolResult
+		const listJson = getStructuredOutput(listResult) as {
+			ok: boolean
+			appliances: Array<{ id: number; name: string; watts: number }>
+			totalWatts: number
+		}
+		expect(listJson.ok).toBe(true)
+		expect(listJson.appliances.length).toBe(2)
+		expect(listJson.totalWatts).toBe(944)
+
+		const totalResult = (await mcpClient.client.callTool({
+			name: 'get_total_watts',
+			arguments: {},
+		})) as CallToolResult
+		const totalJson = getStructuredOutput(totalResult) as {
+			ok: boolean
+			totalWatts: number
+			applianceCount: number
+		}
+		expect(totalJson.ok).toBe(true)
+		expect(totalJson.totalWatts).toBe(944)
+		expect(totalJson.applianceCount).toBe(2)
+
+		const firstId = listJson.appliances[0]?.id
+		expect(firstId).toBeDefined()
+
+		const deleteResult = (await mcpClient.client.callTool({
+			name: 'delete_appliances',
+			arguments: { ids: [firstId as number] },
+		})) as CallToolResult
+		const deleteJson = getStructuredOutput(deleteResult) as {
+			ok: boolean
+			appliances: Array<{ id: number; name: string; watts: number }>
+			totalWatts: number
+		}
+		expect(deleteJson.ok).toBe(true)
+		expect(deleteJson.appliances.length).toBe(1)
+		expect(deleteJson.totalWatts).toBeGreaterThan(0)
+
+		const deleteText = getTextOutput(deleteResult)
+		expect(deleteText).toContain('Deleted 1')
 	},
 	{ timeout: defaultTimeoutMs },
 )

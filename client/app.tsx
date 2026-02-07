@@ -4,6 +4,7 @@ import {
 	OAuthAuthorizeRoute,
 	OAuthCallbackRoute,
 } from './client-routes.tsx'
+import { AppliancesRoute } from './appliances-route.tsx'
 import { Router } from './client-router.tsx'
 import { colors, spacing, typography } from './styles/tokens.ts'
 
@@ -52,6 +53,19 @@ export function App() {
 					Login
 				</a>
 				<a
+					href="/appliances"
+					css={{
+						color: colors.primary,
+						fontWeight: typography.fontWeight.medium,
+						textDecoration: 'none',
+						'&:hover': {
+							textDecoration: 'underline',
+						},
+					}}
+				>
+					Appliances
+				</a>
+				<a
 					href="/signup"
 					css={{
 						color: colors.primary,
@@ -71,6 +85,7 @@ export function App() {
 						'/': HomeRoute(),
 						'/login': LoginRoute('login'),
 						'/signup': LoginRoute('signup'),
+						'/appliances': AppliancesRoute(),
 						'/oauth/authorize': OAuthAuthorizeRoute(),
 						'/oauth/callback': OAuthCallbackRoute(),
 					},

@@ -16,6 +16,29 @@ are available outside the Remix UI.
 - Each tool uses the authenticated user context from MCP auth
 - Tool responses are structured and include watts values
 
+## MCP server best practices (from reference servers)
+
+- Design tools for LLMs, not a 1:1 API mirror: keep names clear, add helpful
+  descriptions, and provide smart defaults so fewer calls are needed.
+- Favor discovery-first flows: provide a single tool that returns needed IDs or
+  metadata to reduce follow-up calls and confusion.
+- Batch operations where possible (e.g. add/delete multiple items) to reduce
+  tool-call count.
+- Validate inputs with strict schemas; return friendly, actionable validation
+  errors instead of raw exceptions.
+- Return structured output that matches declared schemas, and include a concise
+  human-readable summary in `content` for clarity.
+- Mark tools with annotations (read-only, destructive, idempotent) so clients
+  can apply appropriate UX safeguards.
+- Support cancellation: pass request metadata through to tools and abort
+  long-running work when the client cancels.
+- Add rate limiting, concurrency gates, and retry-with-backoff around external
+  API calls to handle 429s and bursty usage.
+- Separate client auth from provider credentials; avoid leaking provider tokens
+  to clients and store secrets securely.
+- Provide basic operational endpoints and metadata (health, server info,
+  protocol version support) for easier debugging and deployment.
+
 ## Testing
 
 Automated: extend MCP server tests to cover list/add/delete and totals. Manual:

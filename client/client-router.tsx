@@ -58,38 +58,10 @@ function matchRoute(
 	return null
 }
 
-function shouldHandleClick(event: MouseEvent, anchor: HTMLAnchorElement) {
-	if (event.defaultPrevented) return false
-	if (event.button !== 0) return false
-	if (event.metaKey || event.altKey || event.ctrlKey || event.shiftKey)
-		return false
-	if (anchor.target && anchor.target !== '_self') return false
-	if (anchor.hasAttribute('download')) return false
-
-	const href = anchor.getAttribute('href')
-	if (!href || href.startsWith('#')) return false
-
-	const destination = new URL(href, window.location.href)
-	if (destination.origin !== window.location.origin) return false
-	return true
-}
-
-function handleDocumentClick(event: MouseEvent) {
-	const target = event.target as Element | null
-	const anchor = target?.closest('a') as HTMLAnchorElement | null
-	if (!anchor || typeof window === 'undefined') return
-	if (!shouldHandleClick(event, anchor)) return
-
-	event.preventDefault()
-	const destination = new URL(anchor.href, window.location.href)
-	navigate(`${destination.pathname}${destination.search}${destination.hash}`)
-}
-
 function ensureRouter() {
 	if (routerInitialized) return
 	routerInitialized = true
 	window.addEventListener('popstate', notify)
-	document.addEventListener('click', handleDocumentClick)
 }
 
 export function getPathname() {
