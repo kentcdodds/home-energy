@@ -28,25 +28,9 @@ const rateLimitPaths = new Set([
 	oauthPaths.register,
 	'/auth',
 ])
-const oauthKvDocsUrl =
-	'https://developers.cloudflare.com/workers/runtime-apis/kv/#create-a-kv-namespace'
 
 function wantsJson(request: Request) {
 	return request.headers.get('Accept')?.includes('application/json') ?? false
-}
-
-function missingOauthKvResponse(request: Request) {
-	const message = `Missing required OAUTH_KV binding. Add a KV namespace bound as "OAUTH_KV" in wrangler.jsonc and redeploy. See ${oauthKvDocsUrl}`
-	console.error('OAUTH_KV binding is missing; refusing all requests.')
-	const body = wantsJson(request)
-		? JSON.stringify({ ok: false, error: message })
-		: message
-	return new Response(body, {
-		status: 500,
-		headers: {
-			'Content-Type': wantsJson(request) ? 'application/json' : 'text/plain',
-		},
-	})
 }
 
 function isRateLimitedRequest(request: Request, url: URL) {
@@ -67,16 +51,16 @@ async function enforceRateLimit(
 		return null
 	}
 	const ip = getRequestIp(request)
-	const ipKey = ip ?? 'unknown'
 	if (!ip) {
-		console.warn('Rate limiting using fallback identifier.', {
+		console.warn('Rate limiting skipped: request IP unavailable.', {
 			path: url.pathname,
 		})
+		return null
 	}
 
 	try {
 		const now = Date.now()
-		const key = `rate-limit:${url.pathname}:${ipKey}`
+		const key = `rate-limit:${url.pathname}:${ip}`
 		const stored = (await oauthKv.get(key, 'json')) as {
 			count: number
 			reset: number
@@ -98,7 +82,7 @@ async function enforceRateLimit(
 				category: 'auth',
 				action: 'rate_limit',
 				result: 'rate_limited',
-				ip: ipKey,
+				ip,
 				path: url.pathname,
 				reason: 'too_many_requests',
 			})
@@ -202,9 +186,6 @@ const oauthProvider = new OAuthProvider({
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext) {
 		const url = new URL(request.url)
-		if (!env.OAUTH_KV) {
-			return missingOauthKvResponse(request)
-		}
 		const rateLimitResponse = await enforceRateLimit(request, env, url)
 		if (rateLimitResponse) {
 			return rateLimitResponse
