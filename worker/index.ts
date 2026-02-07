@@ -28,9 +28,25 @@ const rateLimitPaths = new Set([
 	oauthPaths.register,
 	'/auth',
 ])
+const oauthKvDocsUrl =
+	'https://developers.cloudflare.com/workers/runtime-apis/kv/#create-a-kv-namespace'
 
 function wantsJson(request: Request) {
 	return request.headers.get('Accept')?.includes('application/json') ?? false
+}
+
+function missingOauthKvResponse(request: Request) {
+	const message = `Missing required OAUTH_KV binding. Add a KV namespace bound as "OAUTH_KV" in wrangler.jsonc and redeploy. See ${oauthKvDocsUrl}`
+	console.error('OAUTH_KV binding is missing; rate limiting disabled.')
+	const body = wantsJson(request)
+		? JSON.stringify({ ok: false, error: message })
+		: message
+	return new Response(body, {
+		status: 500,
+		headers: {
+			'Content-Type': wantsJson(request) ? 'application/json' : 'text/plain',
+		},
+	})
 }
 
 function isRateLimitedRequest(request: Request, url: URL) {
@@ -166,6 +182,9 @@ const oauthProvider = new OAuthProvider({
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext) {
 		const url = new URL(request.url)
+		if (!env.OAUTH_KV) {
+			return missingOauthKvResponse(request)
+		}
 		const rateLimitResponse = await enforceRateLimit(request, env, url)
 		if (rateLimitResponse) {
 			return rateLimitResponse
