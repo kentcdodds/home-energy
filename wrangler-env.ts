@@ -1,5 +1,7 @@
-import { setTimeout as delay } from 'node:timers/promises'
+import { existsSync } from 'node:fs'
 import net from 'node:net'
+import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import getPort from 'get-port'
 
 const envName = process.env.CLOUDFLARE_ENV ?? 'production'
@@ -42,7 +44,8 @@ const processEnv = {
 	...(resolvedPort ? { PORT: resolvedPort } : {}),
 }
 
-const proc = Bun.spawn(['wrangler', ...commandArgs], {
+const wranglerBinary = resolveWranglerBinary()
+const proc = Bun.spawn([wranglerBinary, ...commandArgs], {
 	stdio: ['inherit', 'inherit', 'inherit'],
 	env: processEnv,
 })
@@ -113,4 +116,9 @@ function isPortInUse(port: number) {
 
 		socket.connect(port, '127.0.0.1')
 	})
+}
+
+function resolveWranglerBinary() {
+	const localBinary = join(process.cwd(), 'node_modules', '.bin', 'wrangler')
+	return existsSync(localBinary) ? localBinary : 'wrangler'
 }
