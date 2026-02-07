@@ -67,7 +67,7 @@ export function createAuthHandler(appEnv: AppEnv) {
 					result: 'failure',
 					email: normalizedEmail || undefined,
 					ip: requestIp,
-					path: new URL(request.url).pathname,
+					path: url.pathname,
 					reason: 'missing_fields',
 				})
 				return jsonResponse(
@@ -88,7 +88,7 @@ export function createAuthHandler(appEnv: AppEnv) {
 						result: 'failure',
 						email: normalizedEmail,
 						ip: requestIp,
-						path: new URL(request.url).pathname,
+						path: url.pathname,
 						reason: 'email_exists',
 					})
 					return jsonResponse(
@@ -117,7 +117,7 @@ export function createAuthHandler(appEnv: AppEnv) {
 							result: 'failure',
 							email: normalizedEmail,
 							ip: requestIp,
-							path: new URL(request.url).pathname,
+							path: url.pathname,
 							reason: 'email_exists',
 						})
 						return jsonResponse(
@@ -134,7 +134,7 @@ export function createAuthHandler(appEnv: AppEnv) {
 						result: 'failure',
 						email: normalizedEmail,
 						ip: requestIp,
-						path: new URL(request.url).pathname,
+						path: url.pathname,
 						reason: 'insert_failed',
 					})
 					return jsonResponse(
@@ -153,7 +153,7 @@ export function createAuthHandler(appEnv: AppEnv) {
 					result: 'success',
 					email: normalizedEmail,
 					ip: requestIp,
-					path: new URL(request.url).pathname,
+					path: url.pathname,
 				})
 				return jsonResponse(
 					{ ok: true, mode: normalizedMode },
@@ -186,7 +186,7 @@ export function createAuthHandler(appEnv: AppEnv) {
 					result: 'failure',
 					email: normalizedEmail,
 					ip: requestIp,
-					path: new URL(request.url).pathname,
+					path: url.pathname,
 					reason: 'invalid_credentials',
 				})
 				return jsonResponse(
@@ -218,7 +218,7 @@ export function createAuthHandler(appEnv: AppEnv) {
 				result: 'success',
 				email: normalizedEmail,
 				ip: requestIp,
-				path: new URL(request.url).pathname,
+				path: url.pathname,
 			})
 			return jsonResponse(
 				{ ok: true, mode: normalizedMode },

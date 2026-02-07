@@ -16,7 +16,7 @@ import {
 	isProtectedResourceMetadataRequest,
 	mcpResourcePath,
 } from './mcp-auth.ts'
-import { withCors } from './utils.ts'
+import { wantsJson, withCors } from './utils.ts'
 
 export { MCP }
 
@@ -30,10 +30,6 @@ const rateLimitPaths = new Set([
 ])
 const oauthKvDocsUrl =
 	'https://developers.cloudflare.com/workers/runtime-apis/kv/#create-a-kv-namespace'
-
-function wantsJson(request: Request) {
-	return request.headers.get('Accept')?.includes('application/json') ?? false
-}
 
 function missingOauthKvResponse(request: Request) {
 	const message = `Missing required OAUTH_KV binding. Add a KV namespace bound as "OAUTH_KV" in wrangler.jsonc and redeploy. See ${oauthKvDocsUrl}`
