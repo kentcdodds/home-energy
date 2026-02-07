@@ -52,6 +52,10 @@ export async function createAuthCookie(session: AuthSession, secure: boolean) {
 	return getSessionCookie().serialize(JSON.stringify(session), { secure })
 }
 
+export async function clearAuthCookie(secure: boolean) {
+	return getSessionCookie().serialize('', { maxAge: 0, secure })
+}
+
 export async function readAuthSession(request: Request) {
 	const cookieHeader = request.headers.get('Cookie')
 	if (!cookieHeader) return null

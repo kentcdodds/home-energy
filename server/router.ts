@@ -5,6 +5,7 @@ import auth from './handlers/auth.ts'
 import { login, signup } from './handlers/auth-pages.ts'
 import health from './handlers/health.ts'
 import home from './handlers/home.ts'
+import logout from './handlers/logout.ts'
 import session from './handlers/session.ts'
 import { Layout } from './layout.ts'
 import { render } from './render.ts'
@@ -26,6 +27,7 @@ export function createAppRouter(appEnv: AppEnv) {
 	router.map(routes.signup, signup)
 	router.map(routes.session, session)
 	router.post(routes.auth, auth)
+	router.post(routes.logout, logout)
 
 	const appliances = createAppliancesHandlers(appEnv)
 	router.get(routes.appliances.index, appliances.index)
