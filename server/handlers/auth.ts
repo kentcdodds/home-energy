@@ -2,6 +2,7 @@ import { type BuildAction } from 'remix/fetch-router'
 import { z } from 'zod'
 import { createAuthCookie } from '../auth-session.ts'
 import { getRequestIp, logAuditEvent } from '../audit-log.ts'
+import { normalizeEmail } from '../normalize-email.ts'
 import { createPasswordHash, verifyPassword } from '../password-hash.ts'
 import type { AppEnv } from '../../types/env-schema.ts'
 import { createDb, sql } from '../../worker/db.ts'
@@ -23,18 +24,15 @@ function jsonResponse(data: unknown, init?: ResponseInit) {
 	})
 }
 
-function normalizeEmail(email: string) {
-	return email.trim().toLowerCase()
-}
-
 function isUniqueConstraintError(error: unknown) {
 	return (
 		error instanceof Error && /unique constraint failed/i.test(error.message)
 	)
 }
-
 const userLookupSchema = z.object({ id: z.number(), password_hash: z.string() })
 const userIdSchema = z.object({ id: z.number() })
+const dummyPasswordHash =
+	'pbkdf2_sha256$120000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000'
 
 export function createAuthHandler(appEnv: AppEnv) {
 	const db = createDb(appEnv.APP_DB)
@@ -171,9 +169,16 @@ export function createAuthHandler(appEnv: AppEnv) {
 				sql`SELECT id, password_hash FROM users WHERE email = ${normalizedEmail}`,
 				userLookupSchema,
 			)
-			const passwordCheck = userRecord
-				? await verifyPassword(normalizedPassword, userRecord.password_hash)
-				: null
+			let passwordCheck: Awaited<ReturnType<typeof verifyPassword>> | null =
+				null
+			if (userRecord) {
+				passwordCheck = await verifyPassword(
+					normalizedPassword,
+					userRecord.password_hash,
+				)
+			} else {
+				await verifyPassword(normalizedPassword, dummyPasswordHash)
+			}
 			if (!userRecord || !passwordCheck?.valid) {
 				void logAuditEvent({
 					category: 'auth',

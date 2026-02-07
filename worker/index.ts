@@ -58,47 +58,68 @@ async function enforceRateLimit(
 	env: Env,
 	url: URL,
 ): Promise<Response | null> {
-	const oauthKv = env.OAUTH_KV
 	if (!isRateLimitedRequest(request, url)) return null
-	const ip = getRequestIp(request) ?? 'unknown'
-
-	const now = Date.now()
-	const key = `rate-limit:${url.pathname}:${ip}`
-	const stored = (await oauthKv.get(key, 'json')) as {
-		count: number
-		reset: number
-	} | null
-	const windowReset = now + rateLimitWindowMs
-	const state =
-		!stored || now > stored.reset ? { count: 0, reset: windowReset } : stored
-	state.count += 1
-	await oauthKv.put(key, JSON.stringify(state), {
-		expirationTtl: Math.ceil(rateLimitWindowMs / 1000),
-	})
-
-	if (state.count > rateLimitMax) {
-		const retryAfterSeconds = Math.max(1, Math.ceil((state.reset - now) / 1000))
-		void logAuditEvent({
-			category: 'auth',
-			action: 'rate_limit',
-			result: 'rate_limited',
-			ip,
+	const oauthKv = env.OAUTH_KV
+	if (!oauthKv) {
+		console.warn('Rate limiting disabled: missing OAUTH_KV binding.', {
 			path: url.pathname,
-			reason: 'too_many_requests',
 		})
-		const body = wantsJson(request)
-			? JSON.stringify({
-					ok: false,
-					error: 'Too many requests. Please try again later.',
-				})
-			: 'Too many requests. Please try again later.'
-		return new Response(body, {
-			status: 429,
-			headers: {
-				'Content-Type': wantsJson(request) ? 'application/json' : 'text/plain',
-				'Retry-After': String(retryAfterSeconds),
-			},
+		return null
+	}
+	const ip = getRequestIp(request)
+	const ipKey = ip ?? 'unknown'
+	if (!ip) {
+		console.warn('Rate limiting using fallback identifier.', {
+			path: url.pathname,
 		})
+	}
+
+	try {
+		const now = Date.now()
+		const key = `rate-limit:${url.pathname}:${ipKey}`
+		const stored = (await oauthKv.get(key, 'json')) as {
+			count: number
+			reset: number
+		} | null
+		const windowReset = now + rateLimitWindowMs
+		const state =
+			!stored || now > stored.reset ? { count: 0, reset: windowReset } : stored
+		state.count += 1
+		await oauthKv.put(key, JSON.stringify(state), {
+			expirationTtl: Math.ceil(rateLimitWindowMs / 1000),
+		})
+
+		if (state.count > rateLimitMax) {
+			const retryAfterSeconds = Math.max(
+				1,
+				Math.ceil((state.reset - now) / 1000),
+			)
+			void logAuditEvent({
+				category: 'auth',
+				action: 'rate_limit',
+				result: 'rate_limited',
+				ip: ipKey,
+				path: url.pathname,
+				reason: 'too_many_requests',
+			})
+			const body = wantsJson(request)
+				? JSON.stringify({
+						ok: false,
+						error: 'Too many requests. Please try again later.',
+					})
+				: 'Too many requests. Please try again later.'
+			return new Response(body, {
+				status: 429,
+				headers: {
+					'Content-Type': wantsJson(request)
+						? 'application/json'
+						: 'text/plain',
+					'Retry-After': String(retryAfterSeconds),
+				},
+			})
+		}
+	} catch (error) {
+		console.warn('Rate limiting failed open due to KV error.', error)
 	}
 
 	return null

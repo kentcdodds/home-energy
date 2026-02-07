@@ -3,6 +3,7 @@ import { Layout } from '../layout.ts'
 import { render } from '../render.ts'
 import { z } from 'zod'
 import { readAuthSession } from '../auth-session.ts'
+import { normalizeEmail } from '../normalize-email.ts'
 import type routes from '../routes.ts'
 import { createApplianceStore } from '../../worker/appliances.ts'
 import { createDb, sql } from '../../worker/db.ts'
@@ -103,11 +104,6 @@ function parseOptionalNotes(value: FormDataEntryValue | null) {
 	const normalized = value.trim()
 	return normalized ? normalized : null
 }
-
-function normalizeEmail(email: string) {
-	return email.trim().toLowerCase()
-}
-
 async function resolveUserId(db: ReturnType<typeof createDb>, email: string) {
 	const record = await db.queryFirst(
 		sql`SELECT id FROM users WHERE email = ${email}`,
