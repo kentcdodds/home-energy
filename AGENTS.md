@@ -16,6 +16,8 @@ We use bun for installing dependencies and running scripts. Do not use npm.
 
 - Run the Full Gate: `bun run validate`.
 - Run formatting: `bun run format`.
+- Do not commit changes to `types/worker-configuration.d.ts` unless your work
+  requires it (revert any regenerated changes).
 
 ## References
 
