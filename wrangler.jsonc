@@ -1,0 +1,106 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "home-energy",
+	"compatibility_date": "2026-01-31",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"main": "./worker/index.ts",
+	"migrations": [
+		{
+			"new_sqlite_classes": ["MCP"],
+			"tag": "v1",
+		},
+	],
+
+	"observability": {
+		"enabled": true,
+	},
+	"env": {
+		"production": {
+			"assets": {
+				"directory": "./public",
+				"binding": "ASSETS",
+			},
+			"durable_objects": {
+				"bindings": [
+					{
+						"class_name": "MCP",
+						"name": "MCP_OBJECT",
+					},
+				],
+			},
+			"d1_databases": [
+				{
+					"binding": "APP_DB",
+					"database_name": "home-energy",
+					"database_id": "f1391325-3a90-4ad4-8fa9-faaaaa7eb640",
+					"migrations_dir": "migrations",
+				},
+			],
+			"kv_namespaces": [
+				{
+					"binding": "OAUTH_KV",
+					"id": "f7c845e176b64b549fa4a6584c43c159",
+					"preview_id": "b6236038f9b6456e8db041b8e8711c6c",
+				},
+			],
+		},
+		"preview": {
+			"assets": {
+				"directory": "./public",
+				"binding": "ASSETS",
+			},
+			"durable_objects": {
+				"bindings": [
+					{
+						"class_name": "MCP",
+						"name": "MCP_OBJECT",
+					},
+				],
+			},
+			"d1_databases": [
+				{
+					"binding": "APP_DB",
+					"database_name": "home-energy-preview",
+					"database_id": "8bdf77d9-60b9-4f21-a1c4-3a7d5c348679",
+					"migrations_dir": "migrations",
+				},
+			],
+			"kv_namespaces": [
+				{
+					"binding": "OAUTH_KV",
+					"id": "f7c845e176b64b549fa4a6584c43c159",
+					"preview_id": "b6236038f9b6456e8db041b8e8711c6c",
+				},
+			],
+		},
+		"test": {
+			"assets": {
+				"directory": "./public",
+				"binding": "ASSETS",
+			},
+			"durable_objects": {
+				"bindings": [
+					{
+						"class_name": "MCP",
+						"name": "MCP_OBJECT",
+					},
+				],
+			},
+			"d1_databases": [
+				{
+					"binding": "APP_DB",
+					"database_name": "home-energy-preview",
+					"database_id": "8bdf77d9-60b9-4f21-a1c4-3a7d5c348679",
+					"migrations_dir": "migrations",
+				},
+			],
+			"kv_namespaces": [
+				{
+					"binding": "OAUTH_KV",
+					"id": "f7c845e176b64b549fa4a6584c43c159",
+					"preview_id": "b6236038f9b6456e8db041b8e8711c6c",
+				},
+			],
+		},
+	},
+}

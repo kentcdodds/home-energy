@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS appliances (
+	id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+	owner_id INTEGER NOT NULL,
+	name TEXT NOT NULL,
+	watts INTEGER NOT NULL,
+	created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+);
+
+CREATE INDEX IF NOT EXISTS idx_appliances_owner_id ON appliances(owner_id);
