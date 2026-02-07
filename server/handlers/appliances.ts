@@ -6,16 +6,15 @@ import { readAuthSession } from '../auth-session.ts'
 import type routes from '../routes.ts'
 import { createApplianceStore } from '../../worker/appliances.ts'
 import { createDb, sql } from '../../worker/db.ts'
+import {
+	applianceSummarySchema,
+	userIdSchema,
+} from '../../worker/model-schemas.ts'
 import type { AppEnv } from '../../types/env-schema.ts'
 
+type ApplianceSummary = z.infer<typeof applianceSummarySchema>
 type ApplianceListResponse = {
-	appliances: Array<{
-		id: number
-		name: string
-		watts: number
-		notes: string | null
-		created_at: string
-	}>
+	appliances: Array<ApplianceSummary>
 	totalWatts: number
 }
 
@@ -42,6 +41,11 @@ const updateSchema = z
 		watts: z.number().positive().optional(),
 		amps: z.number().positive().optional(),
 		volts: z.number().positive().optional(),
+		notes: z
+			.string()
+			.max(500, 'Notes must be 500 characters or fewer.')
+			.nullable()
+			.optional(),
 	})
 	.refine(
 		(data) => data.watts != null || (data.amps != null && data.volts != null),
@@ -94,6 +98,12 @@ function parseOptionalText(value: FormDataEntryValue | null) {
 	return normalized ? normalized : undefined
 }
 
+function parseOptionalNotes(value: FormDataEntryValue | null) {
+	if (typeof value !== 'string') return undefined
+	const normalized = value.trim()
+	return normalized ? normalized : null
+}
+
 function normalizeEmail(email: string) {
 	return email.trim().toLowerCase()
 }
@@ -101,7 +111,7 @@ function normalizeEmail(email: string) {
 async function resolveUserId(db: ReturnType<typeof createDb>, email: string) {
 	const record = await db.queryFirst(
 		sql`SELECT id FROM users WHERE email = ${email}`,
-		z.object({ id: z.number() }),
+		userIdSchema,
 	)
 	return record?.id ?? null
 }
@@ -118,7 +128,7 @@ async function ensureUserId(db: ReturnType<typeof createDb>, email: string) {
 			VALUES (${username}, ${email}, ${passwordHash})
 			RETURNING id
 		`,
-		z.object({ id: z.number() }),
+		userIdSchema,
 	)
 	return record?.id ?? null
 }
@@ -134,15 +144,7 @@ function sortAppliances(list: ApplianceListResponse['appliances']) {
 	})
 }
 
-function summarizeAppliances(
-	list: Array<{
-		id: number
-		name: string
-		watts: number
-		notes: string | null
-		created_at: string
-	}>,
-) {
+function summarizeAppliances(list: Array<ApplianceSummary>) {
 	const sorted = sortAppliances(list)
 	const totalWatts = sorted.reduce((total, item) => total + item.watts, 0)
 	return { appliances: sorted, totalWatts }
@@ -242,6 +244,7 @@ export function createAppliancesHandlers(appEnv: AppEnv) {
 					watts: parseNumber(formData.get('watts')),
 					amps: parseNumber(formData.get('amps')),
 					volts: parseNumber(formData.get('volts')),
+					notes: parseOptionalNotes(formData.get('notes')),
 				}
 				const result = updateSchema.safeParse(payload)
 				if (!result.success) {
@@ -258,6 +261,7 @@ export function createAppliancesHandlers(appEnv: AppEnv) {
 					ownerId,
 					name: result.data.name,
 					watts,
+					notes: result.data.notes,
 				})
 				if (!updated) {
 					return jsonResponse(

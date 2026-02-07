@@ -1,14 +1,9 @@
 import { z } from 'zod'
 import { createApplianceStore } from '../worker/appliances.ts'
+import { applianceSummarySchema } from '../worker/model-schemas.ts'
 import { type MCP } from './index.ts'
 
-type ApplianceSummary = {
-	id: number
-	name: string
-	watts: number
-	notes: string | null
-	created_at: string
-}
+type ApplianceSummary = z.infer<typeof applianceSummarySchema>
 
 type ApplianceInput = {
 	name: string
@@ -24,6 +19,7 @@ type ApplianceEditInput = {
 	watts?: number
 	amps?: number
 	volts?: number
+	notes?: string | null
 }
 
 const applianceInputSchema = z
@@ -51,6 +47,11 @@ const applianceEditSchema = z
 		watts: z.number().positive().optional(),
 		amps: z.number().positive().optional(),
 		volts: z.number().positive().optional(),
+		notes: z
+			.string()
+			.max(500, 'Notes must be 500 characters or fewer.')
+			.nullable()
+			.optional(),
 	})
 	.refine(
 		(data) => data.watts != null || (data.amps != null && data.volts != null),
@@ -90,12 +91,25 @@ function toSummary(record: ApplianceSummary) {
 	}
 }
 
-function resolveWatts(input: ApplianceInput) {
+type AppliancePowerInput = {
+	watts?: number
+	amps?: number
+	volts?: number
+}
+
+function resolveWatts(input: AppliancePowerInput) {
 	return input.watts ?? input.amps! * input.volts!
 }
 
 function resolveNotes(input: ApplianceInput) {
 	const normalized = input.notes?.trim()
+	return normalized ? normalized : null
+}
+
+function resolveOptionalNotes(input: ApplianceEditInput) {
+	if (input.notes === undefined) return undefined
+	if (input.notes === null) return null
+	const normalized = input.notes.trim()
 	return normalized ? normalized : null
 }
 
@@ -226,11 +240,13 @@ export async function registerTools(agent: MCP) {
 
 			for (const update of updates) {
 				const watts = resolveWatts(update)
+				const notes = resolveOptionalNotes(update)
 				const record = await store.update({
 					id: update.id,
 					ownerId,
 					name: update.name,
 					watts,
+					notes,
 				})
 				if (record) {
 					updated.push(toSummary(record))

@@ -2,7 +2,6 @@ import type {
 	AuthRequest,
 	OAuthHelpers,
 } from '@cloudflare/workers-oauth-provider'
-import { z } from 'zod'
 import {
 	readAuthSession,
 	setAuthSessionSecret,
@@ -11,6 +10,7 @@ import { getEnv } from '../server/env.ts'
 import { Layout } from '../server/layout.ts'
 import { render } from '../server/render.ts'
 import { createDb, sql } from './db.ts'
+import { userPasswordSchema } from './model-schemas.ts'
 
 export const oauthPaths = {
 	authorize: '/oauth/authorize',
@@ -46,7 +46,6 @@ const passwordSaltBytes = 16
 const passwordHashBytes = 32
 const passwordHashIterations = 120_000
 const legacyPasswordHashPattern = /^[0-9a-f]{64}$/i
-const userRecordSchema = z.object({ password_hash: z.string() })
 
 function toHex(bytes: Uint8Array) {
 	return Array.from(bytes)
@@ -358,7 +357,7 @@ export async function handleAuthorizeRequest(
 		const db = createDb(env.APP_DB)
 		const userRecord = await db.queryFirst(
 			sql`SELECT password_hash FROM users WHERE email = ${normalizedEmail}`,
-			userRecordSchema,
+			userPasswordSchema,
 		)
 		const passwordCheck = userRecord
 			? await verifyPassword(password, userRecord.password_hash)

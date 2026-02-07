@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Miniflare } from 'miniflare'
-import { z } from 'zod'
 import { createApplianceStore } from './appliances.ts'
 import { createDb, sql } from './db.ts'
+import { userIdSchema } from './model-schemas.ts'
 
 const projectRoot = fileURLToPath(new URL('..', import.meta.url))
 async function runMigration(db: D1Database, sqlText: string) {
@@ -61,7 +61,7 @@ async function createUser(db: ReturnType<typeof createDb>) {
 			VALUES (${username}, ${email}, ${passwordHash})
 			RETURNING id
 		`,
-		z.object({ id: z.number() }),
+		userIdSchema,
 	)
 	if (!row) {
 		throw new Error('Failed to create user')

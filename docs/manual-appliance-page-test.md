@@ -15,7 +15,8 @@
 5. Confirm the list shows both appliances, their watt values, and the notes on
    the first entry.
 6. Confirm the total watts equals 1680 W.
-7. Edit the "Space heater" entry to 1600 W and confirm totals update.
+7. Edit the "Space heater" entry to 1600 W, update the notes, and confirm the
+   totals and notes update.
 8. Delete the "Fan" entry.
 9. Confirm the list removes "Fan" and the total updates to 1600 W.
 10. Sign out or clear cookies, then visit `/appliances` and confirm redirect to

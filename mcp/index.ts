@@ -1,9 +1,9 @@
 import { invariant } from '@epic-web/invariant'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { TokenSummary } from '@cloudflare/workers-oauth-provider'
-import { z } from 'zod'
 import { McpAgent } from 'agents/mcp'
 import { createDb, sql } from '../worker/db.ts'
+import { userIdSchema } from '../worker/model-schemas.ts'
 import { registerTools } from './tools.ts'
 
 function normalizeEmail(email: string) {
@@ -13,7 +13,7 @@ function normalizeEmail(email: string) {
 async function resolveUserId(db: ReturnType<typeof createDb>, email: string) {
 	const record = await db.queryFirst(
 		sql`SELECT id FROM users WHERE email = ${email}`,
-		z.object({ id: z.number() }),
+		userIdSchema,
 	)
 	return record?.id ?? null
 }
@@ -30,7 +30,7 @@ async function ensureUserId(db: ReturnType<typeof createDb>, email: string) {
 			VALUES (${username}, ${email}, ${passwordHash})
 			RETURNING id
 		`,
-		z.object({ id: z.number() }),
+		userIdSchema,
 	)
 	return record?.id ?? null
 }

@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Miniflare } from 'miniflare'
-import { z } from 'zod'
 import { createAuthCookie, setAuthSessionSecret } from '../auth-session.ts'
 import { createAppliancesHandlers } from './appliances.ts'
 import { createDb, sql } from '../../worker/db.ts'
+import { userIdSchema } from '../../worker/model-schemas.ts'
 
 const projectRoot = fileURLToPath(new URL('../..', import.meta.url))
 
@@ -61,7 +61,7 @@ async function createUser(db: ReturnType<typeof createDb>, email: string) {
 			VALUES (${username}, ${email}, ${passwordHash})
 			RETURNING id
 		`,
-		z.object({ id: z.number() }),
+		userIdSchema,
 	)
 	if (!row) {
 		throw new Error('Failed to create user')
