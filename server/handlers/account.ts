@@ -3,7 +3,6 @@ import { readAuthSession } from '../auth-session.ts'
 import { Layout } from '../layout.ts'
 import { render } from '../render.ts'
 import type routes from '../routes.ts'
-
 export default {
 	middleware: [],
 	async action({ request }) {
