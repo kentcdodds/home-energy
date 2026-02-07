@@ -18,6 +18,14 @@ type ApplianceInput = {
 	notes?: string
 }
 
+type ApplianceEditInput = {
+	id: number
+	name: string
+	watts?: number
+	amps?: number
+	volts?: number
+}
+
 const applianceInputSchema = z
 	.object({
 		name: z.string().min(1, 'Name is required.'),
@@ -28,6 +36,21 @@ const applianceInputSchema = z
 			.string()
 			.max(500, 'Notes must be 500 characters or fewer.')
 			.optional(),
+	})
+	.refine(
+		(data) => data.watts != null || (data.amps != null && data.volts != null),
+		{
+			message: 'Provide watts or amps and volts.',
+		},
+	)
+
+const applianceEditSchema = z
+	.object({
+		id: z.number().int().positive(),
+		name: z.string().min(1, 'Name is required.'),
+		watts: z.number().positive().optional(),
+		amps: z.number().positive().optional(),
+		volts: z.number().positive().optional(),
 	})
 	.refine(
 		(data) => data.watts != null || (data.amps != null && data.volts != null),
@@ -175,6 +198,63 @@ export async function registerTools(agent: MCP) {
 					{
 						type: 'text',
 						text: `Added ${created.length} appliance(s); total is ${formatWatts(
+							summary.totalWatts,
+						)}.`,
+					},
+					{ type: 'text', text: JSON.stringify(payload) },
+				],
+				structuredContent: payload,
+			}
+		},
+	)
+
+	agent.server.registerTool(
+		'edit_appliances',
+		{
+			description:
+				'Edit appliances by id and return the updated list and total watts.',
+			inputSchema: {
+				updates: z.array(applianceEditSchema).min(1),
+			},
+			annotations: { destructiveHint: true, idempotentHint: true },
+		},
+		async ({ updates }: { updates: Array<ApplianceEditInput> }) => {
+			const ownerId = await agent.requireOwnerId()
+			const store = createStore(agent)
+			const updated: Array<ApplianceSummary> = []
+			const missingIds: Array<number> = []
+
+			for (const update of updates) {
+				const watts = resolveWatts(update)
+				const record = await store.update({
+					id: update.id,
+					ownerId,
+					name: update.name,
+					watts,
+				})
+				if (record) {
+					updated.push(toSummary(record))
+				} else {
+					missingIds.push(update.id)
+				}
+			}
+
+			const list = await store.listByOwner(ownerId)
+			const summary = summarizeAppliances(list.map(toSummary))
+			const payload = {
+				ok: true,
+				updated,
+				missingIds,
+				...summary,
+			}
+			const missingText = missingIds.length
+				? ` ${missingIds.length} missing.`
+				: ''
+			return {
+				content: [
+					{
+						type: 'text',
+						text: `Updated ${updated.length} appliance(s).${missingText} Total is ${formatWatts(
 							summary.totalWatts,
 						)}.`,
 					},

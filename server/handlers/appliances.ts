@@ -35,6 +35,19 @@ const createSchema = z
 		{ message: 'Provide watts or amps and volts.' },
 	)
 
+const updateSchema = z
+	.object({
+		id: z.number().int().positive(),
+		name: z.string().min(1, 'Name is required.'),
+		watts: z.number().positive().optional(),
+		amps: z.number().positive().optional(),
+		volts: z.number().positive().optional(),
+	})
+	.refine(
+		(data) => data.watts != null || (data.amps != null && data.volts != null),
+		{ message: 'Provide watts or amps and volts.' },
+	)
+
 const deleteSchema = z.object({
 	id: z.number().int().positive(),
 })
@@ -222,6 +235,36 @@ export function createAppliancesHandlers(appEnv: AppEnv) {
 					watts,
 					notes,
 				})
+			} else if (intent === 'update') {
+				const payload = {
+					id: parseNumber(formData.get('id')),
+					name: String(formData.get('name') ?? '').trim(),
+					watts: parseNumber(formData.get('watts')),
+					amps: parseNumber(formData.get('amps')),
+					volts: parseNumber(formData.get('volts')),
+				}
+				const result = updateSchema.safeParse(payload)
+				if (!result.success) {
+					return jsonResponse(
+						{ ok: false, error: toValidationError(result.error) },
+						{ status: 400 },
+					)
+				}
+
+				const watts =
+					result.data.watts ?? result.data.amps! * result.data.volts!
+				const updated = await store.update({
+					id: result.data.id,
+					ownerId,
+					name: result.data.name,
+					watts,
+				})
+				if (!updated) {
+					return jsonResponse(
+						{ ok: false, error: 'Appliance not found.' },
+						{ status: 404 },
+					)
+				}
 			} else if (intent === 'delete') {
 				const payload = { id: parseNumber(formData.get('id')) }
 				const result = deleteSchema.safeParse(payload)

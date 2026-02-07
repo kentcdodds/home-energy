@@ -487,6 +487,7 @@ test(
 		expect(toolNames).toContain('list_appliances')
 		expect(toolNames).toContain('get_total_watts')
 		expect(toolNames).toContain('add_appliances')
+		expect(toolNames).toContain('edit_appliances')
 		expect(toolNames).toContain('delete_appliances')
 	},
 	{ timeout: defaultTimeoutMs },
@@ -546,6 +547,26 @@ test(
 		).toBe('Counter outlet.')
 		expect(listJson.totalWatts).toBe(944)
 
+		const firstId = listJson.appliances[0]?.id
+		expect(firstId).toBeDefined()
+
+		const editResult = (await mcpClient.client.callTool({
+			name: 'edit_appliances',
+			arguments: {
+				updates: [{ id: firstId as number, name: 'Toaster XL', watts: 900 }],
+			},
+		})) as CallToolResult
+		const editJson = getStructuredOutput(editResult) as {
+			ok: boolean
+			appliances: Array<{ id: number; name: string; watts: number }>
+			updated: Array<{ id: number; name: string; watts: number }>
+			totalWatts: number
+		}
+		expect(editJson.ok).toBe(true)
+		expect(editJson.updated.length).toBe(1)
+		expect(editJson.updated[0]?.name).toBe('Toaster XL')
+		expect(editJson.totalWatts).toBe(1044)
+
 		const totalResult = (await mcpClient.client.callTool({
 			name: 'get_total_watts',
 			arguments: {},
@@ -556,11 +577,8 @@ test(
 			applianceCount: number
 		}
 		expect(totalJson.ok).toBe(true)
-		expect(totalJson.totalWatts).toBe(944)
+		expect(totalJson.totalWatts).toBe(1044)
 		expect(totalJson.applianceCount).toBe(2)
-
-		const firstId = listJson.appliances[0]?.id
-		expect(firstId).toBeDefined()
 
 		const deleteResult = (await mcpClient.client.callTool({
 			name: 'delete_appliances',

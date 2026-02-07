@@ -152,7 +152,12 @@ test('create and delete appliances updates totals and sorting', async () => {
 	const cookie = await createSessionCookie(email)
 	type AppliancesListPayload = {
 		totalWatts: number
-		appliances: Array<{ id: number; name: string; notes: string | null }>
+		appliances: Array<{
+			id: number
+			name: string
+			watts: number
+			notes: string | null
+		}>
 	}
 
 	function createRequest(data: Record<string, string>) {
@@ -200,24 +205,50 @@ test('create and delete appliances updates totals and sorting', async () => {
 	expect(
 		listPayload.appliances.find((item) => item.name === 'Toaster')?.notes,
 	).toBe('Pantry shelf.')
-	const [firstAppliance] = listPayload.appliances
-	if (!firstAppliance) {
-		throw new Error('Expected at least one appliance in list response.')
+	const toaster = listPayload.appliances.find((item) => item.name === 'Toaster')
+	if (!toaster) {
+		throw new Error('Expected toaster in list response.')
+	}
+
+	const updateResponse = await handlers.action.action({
+		request: createRequest({
+			intent: 'update',
+			id: String(toaster.id),
+			name: 'Toaster XL',
+			watts: '1500',
+			notes: 'Moved to the garage.',
+		}),
+	} as never)
+	expect(updateResponse.status).toBe(200)
+	const updatePayload = (await updateResponse.json()) as AppliancesListPayload
+	expect(updatePayload.totalWatts).toBe(2700)
+	expect(updatePayload.appliances.map((item) => item.name)).toEqual([
+		'Toaster XL',
+		'Microwave',
+	])
+	expect(
+		updatePayload.appliances.find((item) => item.name === 'Toaster XL')?.notes,
+	).toBe('Moved to the garage.')
+	const microwave = updatePayload.appliances.find(
+		(item) => item.name === 'Microwave',
+	)
+	if (!microwave) {
+		throw new Error('Expected microwave in update response.')
 	}
 
 	const deleteResponse = await handlers.action.action({
 		request: createRequest({
 			intent: 'delete',
-			id: String(firstAppliance.id),
+			id: String(microwave.id),
 		}),
 	} as never)
 	expect(deleteResponse.status).toBe(200)
 	const deletePayload = (await deleteResponse.json()) as AppliancesListPayload
-	expect(deletePayload.totalWatts).toBe(600)
+	expect(deletePayload.totalWatts).toBe(1500)
 	expect(deletePayload.appliances).toHaveLength(1)
 	const [remainingAppliance] = deletePayload.appliances
 	if (!remainingAppliance) {
 		throw new Error('Expected one appliance after delete.')
 	}
-	expect(remainingAppliance.name).toBe('Toaster')
+	expect(remainingAppliance.name).toBe('Toaster XL')
 })

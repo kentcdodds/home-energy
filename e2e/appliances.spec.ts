@@ -43,6 +43,9 @@ test('manages appliances and totals', async ({ page }) => {
 	const heaterName = `Space heater ${runId}`
 	const fanName = `Fan ${runId}`
 	const heaterNotes = `Near the living room outlet ${runId}`
+	const updatedHeaterName = `Space heater XL ${runId}`
+	const updatedWatts = 1600
+	const updatedNotes = `Moved to the garage ${runId}`
 	const startingTotal = await readTotalWatts(page)
 
 	await page.getByLabel('Appliance name').fill(heaterName)
@@ -88,11 +91,29 @@ test('manages appliances and totals', async ({ page }) => {
 	const totalSummary = page.getByText('Total watts').locator('..')
 	await expect(totalSummary).toContainText(`${startingTotal + 1680} W`)
 
+	await page.getByRole('button', { name: `Edit ${heaterName}` }).click()
+	await page.getByLabel('Edit appliance name').fill(updatedHeaterName)
+	await page.getByLabel('Edit notes (optional)').fill(updatedNotes)
+	await page.getByLabel('Edit watts').fill(String(updatedWatts))
+	await Promise.all([
+		page.waitForNavigation(),
+		page.getByRole('button', { name: 'Save changes' }).click(),
+	])
+	await waitForAppliancesReady(page)
+
+	await expect(
+		page.getByRole('listitem').filter({ hasText: updatedHeaterName }),
+	).toBeVisible()
+	await expect(
+		page.getByRole('listitem').filter({ hasText: updatedHeaterName }),
+	).toContainText(updatedNotes)
+	await expect(totalSummary).toContainText(`${startingTotal + 1780} W`)
+
 	await Promise.all([
 		page.waitForNavigation(),
 		page.getByRole('button', { name: `Delete ${fanName}` }).click(),
 	])
 	await waitForAppliancesReady(page)
-	await expect(totalSummary).toContainText(`${startingTotal + 1500} W`)
+	await expect(totalSummary).toContainText(`${startingTotal + 1600} W`)
 	await expect(page.getByText(fanName)).toHaveCount(0)
 })
