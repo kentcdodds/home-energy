@@ -31,10 +31,9 @@ function timingSafeEqual(left: Uint8Array, right: Uint8Array) {
 	const maxLength = Math.max(left.length, right.length)
 	const leftPadded = padToLength(left, maxLength)
 	const rightPadded = padToLength(right, maxLength)
-	const subtleEqual = crypto.subtle?.timingSafeEqual
 	const isEqual =
-		typeof subtleEqual === 'function'
-			? subtleEqual(leftPadded, rightPadded)
+		typeof crypto.subtle?.timingSafeEqual === 'function'
+			? crypto.subtle.timingSafeEqual(leftPadded, rightPadded)
 			: (() => {
 					let result = 0
 					for (let index = 0; index < maxLength; index += 1) {
