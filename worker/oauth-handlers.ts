@@ -2,15 +2,19 @@ import type {
 	AuthRequest,
 	OAuthHelpers,
 } from '@cloudflare/workers-oauth-provider'
+import { getRequestIp, logAuditEvent } from '../server/audit-log.ts'
 import {
 	readAuthSession,
 	setAuthSessionSecret,
 } from '../server/auth-session.ts'
 import { getEnv } from '../server/env.ts'
+import { toHex } from '../server/hex.ts'
+import { verifyPassword } from '../server/password-hash.ts'
 import { Layout } from '../server/layout.ts'
 import { render } from '../server/render.ts'
 import { createDb, sql } from './db.ts'
 import { userPasswordSchema } from './model-schemas.ts'
+import { wantsJson } from './utils.ts'
 
 export const oauthPaths = {
 	authorize: '/oauth/authorize',
@@ -41,138 +45,14 @@ function renderSpaShell(status = 200) {
 	return render(Layout({}), { status })
 }
 
-const passwordHashPrefix = 'pbkdf2_sha256'
-const passwordSaltBytes = 16
-const passwordHashBytes = 32
-const passwordHashIterations = 120_000
-const legacyPasswordHashPattern = /^[0-9a-f]{64}$/i
-
-function toHex(bytes: Uint8Array) {
-	return Array.from(bytes)
-		.map((value) => value.toString(16).padStart(2, '0'))
-		.join('')
-}
-
-function fromHex(value: string): Uint8Array<ArrayBuffer> | null {
-	const normalized = value.trim().toLowerCase()
-	if (!/^[0-9a-f]+$/.test(normalized) || normalized.length % 2 !== 0) {
-		return null
-	}
-	const bytes = new Uint8Array(normalized.length / 2)
-	for (let index = 0; index < normalized.length; index += 2) {
-		const byte = Number.parseInt(normalized.slice(index, index + 2), 16)
-		if (Number.isNaN(byte)) return null
-		bytes[index / 2] = byte
-	}
-	return bytes
-}
-
-function timingSafeEqual(left: Uint8Array, right: Uint8Array) {
-	if (left.length !== right.length) return false
-	let result = 0
-	for (let index = 0; index < left.length; index += 1) {
-		const leftValue = left[index] ?? 0
-		const rightValue = right[index] ?? 0
-		result |= leftValue ^ rightValue
-	}
-	return result === 0
-}
+const dummyPasswordHash =
+	'pbkdf2_sha256$120000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000'
 
 async function createUserId(email: string) {
 	const normalized = email.trim().toLowerCase()
 	const data = new TextEncoder().encode(normalized)
 	const hash = await crypto.subtle.digest('SHA-256', data)
 	return toHex(new Uint8Array(hash))
-}
-
-async function derivePasswordKey(
-	password: string,
-	salt: Uint8Array<ArrayBuffer>,
-	iterations: number,
-	length: number,
-) {
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(password),
-		'PBKDF2',
-		false,
-		['deriveBits'],
-	)
-	const derivedBits = await crypto.subtle.deriveBits(
-		{
-			name: 'PBKDF2',
-			salt,
-			iterations,
-			hash: 'SHA-256',
-		},
-		key,
-		length * 8,
-	)
-	return new Uint8Array(derivedBits)
-}
-
-async function createPasswordHash(password: string) {
-	const salt = new Uint8Array(new ArrayBuffer(passwordSaltBytes))
-	crypto.getRandomValues(salt)
-	const hash = await derivePasswordKey(
-		password,
-		salt,
-		passwordHashIterations,
-		passwordHashBytes,
-	)
-	return `${passwordHashPrefix}$${passwordHashIterations}$${toHex(salt)}$${toHex(
-		hash,
-	)}`
-}
-
-async function hashLegacyPassword(password: string) {
-	const data = new TextEncoder().encode(password)
-	const hash = await crypto.subtle.digest('SHA-256', data)
-	return toHex(new Uint8Array(hash))
-}
-
-async function verifyPassword(
-	password: string,
-	storedHash: string,
-): Promise<{ valid: boolean; upgradedHash?: string }> {
-	if (!storedHash) {
-		return { valid: false }
-	}
-	const normalizedHash = storedHash.trim()
-	if (normalizedHash.startsWith(`${passwordHashPrefix}$`)) {
-		const [prefix, iterationsRaw, saltHex, hashHex, ...extra] =
-			normalizedHash.split('$')
-		if (prefix !== passwordHashPrefix || extra.length > 0) {
-			return { valid: false }
-		}
-		if (!iterationsRaw) return { valid: false }
-		const iterations = Number.parseInt(iterationsRaw, 10)
-		const salt = saltHex ? fromHex(saltHex) : null
-		const hash = hashHex ? fromHex(hashHex) : null
-		if (!iterations || iterations < 1 || !salt || !hash) {
-			return { valid: false }
-		}
-		const derived = await derivePasswordKey(
-			password,
-			salt,
-			iterations,
-			hash.length,
-		)
-		return { valid: timingSafeEqual(derived, hash) }
-	}
-
-	if (legacyPasswordHashPattern.test(normalizedHash)) {
-		const legacyHash = await hashLegacyPassword(password)
-		const valid = timingSafeEqual(
-			new TextEncoder().encode(legacyHash),
-			new TextEncoder().encode(normalizedHash.toLowerCase()),
-		)
-		if (valid) {
-			return { valid: true, upgradedHash: await createPasswordHash(password) }
-		}
-	}
-
-	return { valid: false }
 }
 
 function jsonResponse(data: unknown, init?: ResponseInit) {
@@ -235,10 +115,6 @@ function createAccessDeniedRedirectUrl(request: AuthRequest) {
 	redirectUrl.searchParams.set('error', 'access_denied')
 	if (request.state) redirectUrl.searchParams.set('state', request.state)
 	return redirectUrl.toString()
-}
-
-function wantsJson(request: Request) {
-	return request.headers.get('Accept')?.includes('application/json') ?? false
 }
 
 function createAuthorizeErrorRedirect(
@@ -316,6 +192,7 @@ export async function handleAuthorizeRequest(
 		return new Response('Method not allowed', { status: 405 })
 	}
 
+	const requestIp = getRequestIp(request) ?? undefined
 	const helpers = getOAuthHelpers(env)
 	const resolution = await resolveAuthRequest(helpers, request)
 	if ('error' in resolution) {
@@ -349,6 +226,15 @@ export async function handleAuthorizeRequest(
 	const hasSession = Boolean(sessionEmail)
 
 	if (!hasFormCredentials && !hasSession) {
+		void logAuditEvent({
+			category: 'oauth',
+			action: 'authorize',
+			result: 'failure',
+			email: normalizedEmail || undefined,
+			ip: requestIp,
+			clientId: authRequest.clientId,
+			reason: 'missing_credentials',
+		})
 		return respondAuthorizeError(request, 'Email and password are required.')
 	}
 
@@ -359,11 +245,23 @@ export async function handleAuthorizeRequest(
 			sql`SELECT password_hash FROM users WHERE email = ${normalizedEmail}`,
 			userPasswordSchema,
 		)
-		const passwordCheck = userRecord
-			? await verifyPassword(password, userRecord.password_hash)
-			: null
+		let passwordCheck: Awaited<ReturnType<typeof verifyPassword>> | null = null
+		if (userRecord) {
+			passwordCheck = await verifyPassword(password, userRecord.password_hash)
+		} else {
+			await verifyPassword(password, dummyPasswordHash)
+		}
 
 		if (!userRecord || !passwordCheck?.valid) {
+			void logAuditEvent({
+				category: 'oauth',
+				action: 'authorize',
+				result: 'failure',
+				email: normalizedEmail,
+				ip: requestIp,
+				clientId: authRequest.clientId,
+				reason: 'invalid_credentials',
+			})
 			return respondAuthorizeError(request, 'Invalid email or password.')
 		}
 
@@ -398,6 +296,14 @@ export async function handleAuthorizeRequest(
 				email: approvedEmail,
 				displayName,
 			},
+		})
+		void logAuditEvent({
+			category: 'oauth',
+			action: 'authorize',
+			result: 'success',
+			email: approvedEmail,
+			ip: requestIp,
+			clientId: authRequest.clientId,
 		})
 		return wantsJson(request)
 			? jsonResponse({ ok: true, redirectTo })

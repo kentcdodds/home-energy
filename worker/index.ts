@@ -1,6 +1,7 @@
 import { OAuthProvider } from '@cloudflare/workers-oauth-provider'
 import { MCP } from '../mcp/index.ts'
 import { handleRequest } from '../server/handler.ts'
+import { getRequestIp, logAuditEvent } from '../server/audit-log.ts'
 import {
 	apiHandler,
 	handleAuthorizeRequest,
@@ -19,16 +20,98 @@ import { withCors } from './utils.ts'
 
 export { MCP }
 
+const rateLimitWindowMs = 60_000
+const rateLimitMax = 10
+const rateLimitPaths = new Set([
+	oauthPaths.authorize,
+	oauthPaths.token,
+	oauthPaths.register,
+	'/auth',
+])
+
+function wantsJson(request: Request) {
+	return request.headers.get('Accept')?.includes('application/json') ?? false
+}
+
+function isRateLimitedRequest(request: Request, url: URL) {
+	return request.method === 'POST' && rateLimitPaths.has(url.pathname)
+}
+
+async function enforceRateLimit(
+	request: Request,
+	env: Env,
+	url: URL,
+): Promise<Response | null> {
+	if (!isRateLimitedRequest(request, url)) return null
+	if (!env.OAUTH_KV) return null
+	const ip = getRequestIp(request)
+	if (!ip) return null
+
+	const now = Date.now()
+	const key = `rate-limit:${url.pathname}:${ip}`
+	const stored = (await env.OAUTH_KV.get(key, 'json')) as
+		| { count: number; reset: number }
+		| null
+	const windowReset = now + rateLimitWindowMs
+	const state =
+		!stored || now > stored.reset ? { count: 0, reset: windowReset } : stored
+	state.count += 1
+	await env.OAUTH_KV.put(key, JSON.stringify(state), {
+		expirationTtl: Math.ceil(rateLimitWindowMs / 1000),
+	})
+
+	if (state.count > rateLimitMax) {
+		const retryAfterSeconds = Math.max(
+			1,
+			Math.ceil((state.reset - now) / 1000),
+		)
+		void logAuditEvent({
+			category: 'auth',
+			action: 'rate_limit',
+			result: 'rate_limited',
+			ip,
+			path: url.pathname,
+			reason: 'too_many_requests',
+		})
+		const body = wantsJson(request)
+			? JSON.stringify({
+					ok: false,
+					error: 'Too many requests. Please try again later.',
+				})
+			: 'Too many requests. Please try again later.'
+		return new Response(body, {
+			status: 429,
+			headers: {
+				'Content-Type': wantsJson(request)
+					? 'application/json'
+					: 'text/plain',
+				'Retry-After': String(retryAfterSeconds),
+			},
+		})
+	}
+
+	return null
+}
+
 const appHandler = withCors({
-	getCorsHeaders() {
+	getCorsHeaders(request) {
+		const origin = request.headers.get('Origin')
+		if (!origin) return null
+		const requestOrigin = new URL(request.url).origin
+		if (origin !== requestOrigin) return null
 		return {
-			'Access-Control-Allow-Origin': '*',
+			'Access-Control-Allow-Origin': origin,
 			'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 			'Access-Control-Allow-Headers': 'content-type, authorization',
+			Vary: 'Origin',
 		}
 	},
 	async handler(request, env, ctx) {
 		const url = new URL(request.url)
+		const rateLimitResponse = await enforceRateLimit(request, env, url)
+		if (rateLimitResponse) {
+			return rateLimitResponse
+		}
 
 		if (url.pathname === oauthPaths.authorize) {
 			return handleAuthorizeRequest(request, env)
