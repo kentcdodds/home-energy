@@ -2,7 +2,7 @@
   <img src="./public/logo.png" alt="epicflare logo" width="400" />
 
   <p>
-    <strong>A starter and reference for building full-stack web applications on Cloudflare Workers</strong>
+    <strong>Home Energy helps you track appliance energy usage and total watts</strong>
   </p>
 
   <p>
@@ -16,71 +16,39 @@
 
 ---
 
-epicflare is a full-stack starter kit for Cloudflare Workers that packages a
-Remix 3 app, server routing, and MCP endpoints into a single Worker deployment.
-It is designed as a reference implementation for building user-facing products
-and tool-integrated APIs on the same edge runtime, with OAuth-protected access
-for agent and automation clients.
+Home Energy is a small web app for tracking household appliance energy usage.
+Sign in, add appliances with their wattage (or amps + volts), and the app
+calculates total watts across your list. Keep the list current by deleting items
+as needed, and use MCP tools to read totals or manage appliances from automation
+clients.
 
-## What You Get
+## What It Does
 
-- A single Worker entrypoint that routes OAuth, MCP, static assets, and Remix
-  requests.
-- Built-in MCP (Model Context Protocol) endpoints protected by OAuth flows.
-- Cloudflare D1 (SQLite) for app data, KV for sessions, and Durable Objects for
-  MCP state.
-- Bun-first scripts, esbuild bundling, Playwright E2E testing, and CI-friendly
-  workflows.
-- A guided setup script to provision Cloudflare resources and environment
-  variables.
+- Lets you add appliances by watts or by amps + volts (stored as watts).
+- Shows a running total of watts across all appliances.
+- Supports deleting appliances to keep totals accurate.
+- Exposes MCP tools for list, add, delete, and total-watts flows.
 
-## Ideal Uses
+## Who It Is For
 
-- Edge-hosted apps that need UI and APIs in one deployment.
-- Internal tooling where agents or automations talk to the same backend as the
-  UI.
-- Rapid prototypes that lean on Cloudflare primitives without custom infra.
+- People estimating household loads or comparing appliance usage.
+- Teams that want a simple, auditable energy-usage list with automation hooks.
 
-## Quick Start
+## Project Lineage
+
+Home Energy is based on the epicflare starter kit.
+
+## Development Quick Start
 
 ```bash
-bunx create-epicflare
+bun install
+bun run dev
 ```
 
-This will clone the template, install dependencies, run the guided setup, and
-start the dev server.
+This installs dependencies and starts the local dev server.
 
 See [`docs/getting-started.md`](./docs/getting-started.md) for the full setup
 paths and expectations.
-
-## Tech Stack
-
-| Layer           | Technology                                                            |
-| --------------- | --------------------------------------------------------------------- |
-| Runtime         | [Cloudflare Workers](https://workers.cloudflare.com/)                 |
-| UI Framework    | [Remix 3](https://remix.run/) (alpha)                                 |
-| Package Manager | [Bun](https://bun.sh/)                                                |
-| Database        | [Cloudflare D1](https://developers.cloudflare.com/d1/)                |
-| Session/OAuth   | [Cloudflare KV](https://developers.cloudflare.com/kv/)                |
-| MCP State       | [Durable Objects](https://developers.cloudflare.com/durable-objects/) |
-| E2E Testing     | [Playwright](https://playwright.dev/)                                 |
-| Bundler         | [esbuild](https://esbuild.github.io/)                                 |
-
-## How It Works
-
-```
-Request → worker/index.ts
-              │
-              ├─→ OAuth handlers
-              ├─→ MCP endpoints
-              ├─→ Static assets (public/)
-              └─→ Server router → Remix components
-```
-
-- `worker/index.ts` is the entrypoint for Cloudflare Workers
-- OAuth requests are handled first, then MCP requests, then static assets
-- Non-asset requests fall through to the server handler and router
-- Client assets are bundled into `public/` and served via the `ASSETS` binding
 
 ## Documentation
 
