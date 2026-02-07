@@ -53,10 +53,18 @@ function wantsJson(request: Request) {
 	return request.headers.get('Accept')?.includes('application/json') ?? false
 }
 
+function buildLoginRedirect(request: Request) {
+	const url = new URL(request.url)
+	const redirectTo = `${url.pathname}${url.search}`
+	const loginUrl = new URL('/login', url)
+	loginUrl.searchParams.set('redirectTo', redirectTo)
+	return loginUrl
+}
+
 function unauthorizedResponse(request: Request) {
 	return wantsJson(request)
 		? jsonResponse({ ok: false, error: 'Unauthorized' }, { status: 401 })
-		: Response.redirect(new URL('/login', request.url), 302)
+		: Response.redirect(buildLoginRedirect(request), 302)
 }
 
 function parseNumber(value: FormDataEntryValue | null) {

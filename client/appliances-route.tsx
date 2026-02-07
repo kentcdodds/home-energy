@@ -9,6 +9,37 @@ import {
 	typography,
 } from './styles/tokens.ts'
 
+function buildLoginRedirect() {
+	if (typeof window === 'undefined') return '/login'
+	const url = new URL(window.location.href)
+	const redirectTo = `${url.pathname}${url.search}`
+	const params = new URLSearchParams({ redirectTo })
+	return `/login?${params.toString()}`
+}
+
+function createTimeoutController(
+	timeoutMs: number,
+	parentSignal?: AbortSignal,
+) {
+	const controller = new AbortController()
+	const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+	if (parentSignal) {
+		if (parentSignal.aborted) {
+			controller.abort()
+		} else {
+			parentSignal.addEventListener('abort', () => controller.abort(), {
+				once: true,
+			})
+		}
+	}
+
+	return {
+		controller,
+		cancel: () => clearTimeout(timeoutId),
+	}
+}
+
 type Appliance = {
 	id: number
 	name: string
@@ -42,18 +73,19 @@ function AppliancesPage(handle: Handle) {
 	let message: string | null = null
 	let isSubmitting = false
 
-	handle.queueTask(async (signal) => {
+	async function loadAppliances(signal: AbortSignal) {
+		const { controller, cancel } = createTimeoutController(10_000, signal)
 		try {
 			const response = await fetch('/appliances', {
 				headers: { Accept: 'application/json' },
 				credentials: 'include',
-				signal,
+				signal: controller.signal,
 			})
 
 			if (signal.aborted) return
 
 			if (response.status === 401) {
-				navigate('/login')
+				navigate(buildLoginRedirect())
 				return
 			}
 
@@ -75,8 +107,10 @@ function AppliancesPage(handle: Handle) {
 			status = 'error'
 			setMessage('Unable to load appliances.')
 			handle.update()
+		} finally {
+			cancel()
 		}
-	})
+	}
 
 	function setMessage(nextMessage: string | null) {
 		message = nextMessage
@@ -100,6 +134,7 @@ function AppliancesPage(handle: Handle) {
 		isSubmitting = true
 		handle.update()
 
+		const { controller, cancel } = createTimeoutController(10_000)
 		try {
 			const response = await fetch('/appliances', {
 				method: 'POST',
@@ -109,12 +144,13 @@ function AppliancesPage(handle: Handle) {
 				},
 				credentials: 'include',
 				body,
+				signal: controller.signal,
 			})
 
 			if (response.status === 401) {
 				isSubmitting = false
 				handle.update()
-				navigate('/login')
+				navigate(buildLoginRedirect())
 				return didSucceed
 			}
 
@@ -139,6 +175,8 @@ function AppliancesPage(handle: Handle) {
 			isSubmitting = false
 			setMessage('Network error. Please try again.')
 			handle.update()
+		} finally {
+			cancel()
 		}
 		return didSucceed
 	}
@@ -176,6 +214,9 @@ function AppliancesPage(handle: Handle) {
 	}
 
 	return () => {
+		if (status === 'loading') {
+			handle.queueTask(loadAppliances)
+		}
 		return (
 			<section css={{ display: 'grid', gap: spacing.xl }}>
 				<header css={{ display: 'grid', gap: spacing.xs }}>

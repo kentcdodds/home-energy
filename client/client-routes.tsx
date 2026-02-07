@@ -10,6 +10,19 @@ import {
 	typography,
 } from './styles/tokens.ts'
 
+function getSearchParams() {
+	return typeof window === 'undefined'
+		? new URLSearchParams()
+		: new URLSearchParams(window.location.search)
+}
+
+function normalizeRedirectTo(value: string | null) {
+	if (!value) return null
+	if (!value.startsWith('/')) return null
+	if (value.startsWith('//')) return null
+	return value
+}
+
 export function HomeRoute() {
 	return (_match: { path: string; params: Record<string, string> }) => (
 		<section
@@ -74,15 +87,27 @@ export function HomeRoute() {
 
 type AuthMode = 'login' | 'signup'
 type AuthStatus = 'idle' | 'submitting' | 'success' | 'error'
+type SessionStatus = 'idle' | 'loading' | 'ready'
 
 type LoginFormSetup = {
 	initialMode?: AuthMode
+}
+
+function buildAuthPath(mode: AuthMode, redirectTo: string | null) {
+	const path = mode === 'signup' ? '/signup' : '/login'
+	if (!redirectTo) return path
+	const params = new URLSearchParams({ redirectTo })
+	return `${path}?${params.toString()}`
 }
 
 function LoginForm(handle: Handle, setup: LoginFormSetup = {}) {
 	let mode: AuthMode = setup.initialMode ?? 'login'
 	let status: AuthStatus = 'idle'
 	let message: string | null = null
+	let sessionStatus: SessionStatus = 'idle'
+	let sessionEmail = ''
+	const redirectTo = normalizeRedirectTo(getSearchParams().get('redirectTo'))
+	const redirectTarget = redirectTo ?? '/account'
 
 	function setState(nextStatus: AuthStatus, nextMessage: string | null = null) {
 		status = nextStatus
@@ -95,9 +120,41 @@ function LoginForm(handle: Handle, setup: LoginFormSetup = {}) {
 		mode = nextMode
 		status = 'idle'
 		message = null
-		navigate(nextMode === 'signup' ? '/signup' : '/login')
+		navigate(buildAuthPath(nextMode, redirectTo))
 		handle.update()
 	}
+
+	handle.queueTask(async (signal) => {
+		if (sessionStatus !== 'idle') return
+		sessionStatus = 'loading'
+
+		try {
+			const response = await fetch('/session', {
+				headers: { Accept: 'application/json' },
+				credentials: 'include',
+				signal,
+			})
+			if (signal.aborted) return
+			const payload = await response.json().catch(() => null)
+			const email =
+				response.ok &&
+				payload?.ok &&
+				typeof payload?.session?.email === 'string'
+					? payload.session.email.trim()
+					: ''
+			sessionEmail = email
+		} catch {
+			if (signal.aborted) return
+			sessionEmail = ''
+		}
+
+		sessionStatus = 'ready'
+		if (sessionEmail && typeof window !== 'undefined') {
+			window.location.assign('/account')
+			return
+		}
+		handle.update()
+	})
 
 	async function handleSubmit(event: SubmitEvent) {
 		event.preventDefault()
@@ -133,7 +190,7 @@ function LoginForm(handle: Handle, setup: LoginFormSetup = {}) {
 			}
 
 			if (typeof window !== 'undefined') {
-				window.location.assign('/account')
+				window.location.assign(redirectTarget)
 			}
 		} catch {
 			setState('error', 'Network error. Please try again.')
@@ -350,12 +407,6 @@ function OAuthAuthorizeForm(handle: Handle) {
 	function setMessage(next: OAuthAuthorizeMessage | null) {
 		message = next
 		handle.update()
-	}
-
-	function getSearchParams() {
-		return typeof window === 'undefined'
-			? new URLSearchParams()
-			: new URLSearchParams(window.location.search)
 	}
 
 	function readQueryError() {
