@@ -16,9 +16,30 @@
 
 ---
 
-epicflare ships a Remix-powered UI, server routing, and OAuth-protected MCP
-endpoints so you can build both a user-facing app and tooling APIs on the same
-Worker.
+epicflare is a full-stack starter kit for Cloudflare Workers that packages a
+Remix 3 app, server routing, and MCP endpoints into a single Worker deployment.
+It is designed as a reference implementation for building user-facing products
+and tool-integrated APIs on the same edge runtime, with OAuth-protected access
+for agent and automation clients.
+
+## What You Get
+
+- A single Worker entrypoint that routes OAuth, MCP, static assets, and Remix
+  requests.
+- Built-in MCP (Model Context Protocol) endpoints protected by OAuth flows.
+- Cloudflare D1 (SQLite) for app data, KV for sessions, and Durable Objects for
+  MCP state.
+- Bun-first scripts, esbuild bundling, Playwright E2E testing, and CI-friendly
+  workflows.
+- A guided setup script to provision Cloudflare resources and environment
+  variables.
+
+## Ideal Uses
+
+- Edge-hosted apps that need UI and APIs in one deployment.
+- Internal tooling where agents or automations talk to the same backend as the
+  UI.
+- Rapid prototypes that lean on Cloudflare primitives without custom infra.
 
 ## Quick Start
 
