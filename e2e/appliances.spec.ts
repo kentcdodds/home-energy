@@ -15,16 +15,29 @@ async function readTotalWatts(page: Page) {
 	return match ? Number(match[1]) : 0
 }
 
+async function waitForAppliancesReady(page: Page) {
+	await expect(page.getByRole('heading', { name: 'Appliances' })).toBeVisible()
+	const loading = page.getByText('Loading appliances…')
+	await loading.waitFor({ state: 'hidden' })
+	const loadError = page
+		.getByRole('alert')
+		.filter({ hasText: 'Unable to load appliances.' })
+	if (await loadError.isVisible()) {
+		await page.reload()
+		await loading.waitFor({ state: 'hidden' })
+	}
+}
+
 test('redirects logged-out users to login', async ({ page }) => {
 	await page.goto('/appliances')
-	await expect(page).toHaveURL(/\/login$/)
+	await expect(page).toHaveURL(/\/login\?redirectTo=%2Fappliances$/)
 })
 
 test('manages appliances and totals', async ({ page }) => {
 	await login(page)
 
 	await page.goto('/appliances')
-	await expect(page.getByRole('heading', { name: 'Appliances' })).toBeVisible()
+	await waitForAppliancesReady(page)
 
 	const runId = Date.now()
 	const heaterName = `Space heater ${runId}`
@@ -39,6 +52,7 @@ test('manages appliances and totals', async ({ page }) => {
 		page.waitForNavigation(),
 		page.getByRole('button', { name: 'Add appliance' }).click(),
 	])
+	await waitForAppliancesReady(page)
 
 	await expect(
 		page.getByRole('listitem').filter({ hasText: heaterName }),
@@ -65,6 +79,7 @@ test('manages appliances and totals', async ({ page }) => {
 		page.waitForNavigation(),
 		page.getByRole('button', { name: 'Add appliance' }).click(),
 	])
+	await waitForAppliancesReady(page)
 
 	await expect(
 		page.getByRole('listitem').filter({ hasText: fanName }),
@@ -77,6 +92,7 @@ test('manages appliances and totals', async ({ page }) => {
 		page.waitForNavigation(),
 		page.getByRole('button', { name: `Delete ${fanName}` }).click(),
 	])
+	await waitForAppliancesReady(page)
 	await expect(totalSummary).toContainText(`${startingTotal + 1500} W`)
 	await expect(page.getByText(fanName)).toHaveCount(0)
 })
