@@ -29,7 +29,7 @@ export function App() {
 				<a
 					href="/"
 					css={{
-						color: colors.primary,
+						color: colors.primaryText,
 						fontWeight: typography.fontWeight.medium,
 						textDecoration: 'none',
 						'&:hover': {
@@ -42,7 +42,7 @@ export function App() {
 				<a
 					href="/login"
 					css={{
-						color: colors.primary,
+						color: colors.primaryText,
 						fontWeight: typography.fontWeight.medium,
 						textDecoration: 'none',
 						'&:hover': {
@@ -55,7 +55,7 @@ export function App() {
 				<a
 					href="/appliances"
 					css={{
-						color: colors.primary,
+						color: colors.primaryText,
 						fontWeight: typography.fontWeight.medium,
 						textDecoration: 'none',
 						'&:hover': {
@@ -68,7 +68,7 @@ export function App() {
 				<a
 					href="/signup"
 					css={{
-						color: colors.primary,
+						color: colors.primaryText,
 						fontWeight: typography.fontWeight.medium,
 						textDecoration: 'none',
 						'&:hover': {

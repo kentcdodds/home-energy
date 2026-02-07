@@ -219,7 +219,7 @@ function AppliancesPage(handle: Handle) {
 								margin: 0,
 								fontSize: typography.fontSize.xl,
 								fontWeight: typography.fontWeight.semibold,
-								color: colors.primary,
+								color: colors.primaryText,
 							}}
 						>
 							{totalWatts} W
