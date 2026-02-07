@@ -23,20 +23,25 @@ function createTimeoutController(
 ) {
 	const controller = new AbortController()
 	const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+	let onParentAbort: (() => void) | undefined
 
 	if (parentSignal) {
 		if (parentSignal.aborted) {
 			controller.abort()
 		} else {
-			parentSignal.addEventListener('abort', () => controller.abort(), {
-				once: true,
-			})
+			onParentAbort = () => controller.abort()
+			parentSignal.addEventListener('abort', onParentAbort, { once: true })
 		}
 	}
 
 	return {
 		controller,
-		cancel: () => clearTimeout(timeoutId),
+		cancel: () => {
+			clearTimeout(timeoutId)
+			if (onParentAbort && parentSignal) {
+				parentSignal.removeEventListener('abort', onParentAbort)
+			}
+		},
 	}
 }
 
@@ -72,6 +77,7 @@ function AppliancesPage(handle: Handle) {
 	let totalWatts = 0
 	let message: string | null = null
 	let isSubmitting = false
+	let isLoadQueued = false
 
 	async function loadAppliances(signal: AbortSignal) {
 		const { controller, cancel } = createTimeoutController(10_000, signal)
@@ -108,6 +114,7 @@ function AppliancesPage(handle: Handle) {
 			setMessage('Unable to load appliances.')
 			handle.update()
 		} finally {
+			isLoadQueued = false
 			cancel()
 		}
 	}
@@ -214,7 +221,8 @@ function AppliancesPage(handle: Handle) {
 	}
 
 	return () => {
-		if (status === 'loading') {
+		if (status === 'loading' && !isLoadQueued) {
+			isLoadQueued = true
 			handle.queueTask(loadAppliances)
 		}
 		return (

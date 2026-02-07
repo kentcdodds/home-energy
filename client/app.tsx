@@ -44,24 +44,24 @@ export function App(handle: Handle) {
 		handle.update()
 	})
 
-const navLinkCss = {
-	color: colors.primary,
-	fontWeight: typography.fontWeight.medium,
-	textDecoration: 'none',
-	'&:hover': {
-		textDecoration: 'underline',
-	},
-}
+	const navLinkCss = {
+		color: colors.primary,
+		fontWeight: typography.fontWeight.medium,
+		textDecoration: 'none',
+		'&:hover': {
+			textDecoration: 'underline',
+		},
+	}
 
-const logOutButtonCss = {
-	padding: `${spacing.xs} ${spacing.md}`,
-	borderRadius: '999px',
-	border: `1px solid ${colors.border}`,
-	backgroundColor: 'transparent',
-	color: colors.text,
-	fontWeight: typography.fontWeight.medium,
-	cursor: 'pointer',
-}
+	const logOutButtonCss = {
+		padding: `${spacing.xs} ${spacing.md}`,
+		borderRadius: '999px',
+		border: `1px solid ${colors.border}`,
+		backgroundColor: 'transparent',
+		color: colors.text,
+		fontWeight: typography.fontWeight.medium,
+		cursor: 'pointer',
+	}
 
 	return () => {
 		const isSessionReady = sessionStatus === 'ready'
