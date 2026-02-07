@@ -146,6 +146,10 @@ test('create and delete appliances updates totals and sorting', async () => {
 	const email = 'user@example.com'
 	await createUser(db, email)
 	const cookie = await createSessionCookie(email)
+	type AppliancesListPayload = {
+		totalWatts: number
+		appliances: Array<{ id: number; name: string }>
+	}
 
 	function createRequest(data: Record<string, string>) {
 		return buildRequest('/appliances', {
@@ -183,21 +187,29 @@ test('create and delete appliances updates totals and sorting', async () => {
 			headers: { Accept: 'application/json', Cookie: cookie },
 		}),
 	} as never)
-	const listPayload = await listResponse.json()
+	const listPayload = (await listResponse.json()) as AppliancesListPayload
 	expect(listPayload.totalWatts).toBe(1800)
 	expect(
 		listPayload.appliances.map((item: { name: string }) => item.name),
 	).toEqual(['Microwave', 'Toaster'])
+	const [firstAppliance] = listPayload.appliances
+	if (!firstAppliance) {
+		throw new Error('Expected at least one appliance in list response.')
+	}
 
 	const deleteResponse = await handlers.action.action({
 		request: createRequest({
 			intent: 'delete',
-			id: String(listPayload.appliances[0].id),
+			id: String(firstAppliance.id),
 		}),
 	} as never)
 	expect(deleteResponse.status).toBe(200)
-	const deletePayload = await deleteResponse.json()
+	const deletePayload = (await deleteResponse.json()) as AppliancesListPayload
 	expect(deletePayload.totalWatts).toBe(600)
 	expect(deletePayload.appliances).toHaveLength(1)
-	expect(deletePayload.appliances[0].name).toBe('Toaster')
+	const [remainingAppliance] = deletePayload.appliances
+	if (!remainingAppliance) {
+		throw new Error('Expected one appliance after delete.')
+	}
+	expect(remainingAppliance.name).toBe('Toaster')
 })
