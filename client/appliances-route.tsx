@@ -116,6 +116,9 @@ function AppliancesPage(handle: Handle) {
 		} finally {
 			isLoadQueued = false
 			cancel()
+			if (signal.aborted && status === 'loading') {
+				handle.update()
+			}
 		}
 	}
 
