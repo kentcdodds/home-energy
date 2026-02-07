@@ -58,14 +58,13 @@ async function enforceRateLimit(
 	env: Env,
 	url: URL,
 ): Promise<Response | null> {
+	const oauthKv = env.OAUTH_KV
 	if (!isRateLimitedRequest(request, url)) return null
-	if (!env.OAUTH_KV) return null
-	const ip = getRequestIp(request)
-	if (!ip) return null
+	const ip = getRequestIp(request) ?? 'unknown'
 
 	const now = Date.now()
 	const key = `rate-limit:${url.pathname}:${ip}`
-	const stored = (await env.OAUTH_KV.get(key, 'json')) as {
+	const stored = (await oauthKv.get(key, 'json')) as {
 		count: number
 		reset: number
 	} | null
@@ -73,7 +72,7 @@ async function enforceRateLimit(
 	const state =
 		!stored || now > stored.reset ? { count: 0, reset: windowReset } : stored
 	state.count += 1
-	await env.OAUTH_KV.put(key, JSON.stringify(state), {
+	await oauthKv.put(key, JSON.stringify(state), {
 		expirationTtl: Math.ceil(rateLimitWindowMs / 1000),
 	})
 
