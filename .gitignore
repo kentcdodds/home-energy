@@ -25,6 +25,7 @@ package-lock.json
 *.sw?
 .wrangler
 .env
+.dev.vars
 playwright-report
 test-results
 public/client-entry.js

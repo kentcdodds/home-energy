@@ -1,16 +1,5 @@
-import { z } from 'zod'
 import { createDb, sql } from './db.ts'
-
-const applianceSchema = z.object({
-	id: z.number(),
-	owner_id: z.number(),
-	name: z.string(),
-	watts: z.number(),
-	notes: z.string().nullable(),
-	created_at: z.string(),
-})
-
-export type ApplianceRecord = z.infer<typeof applianceSchema>
+import { applianceSchema, type ApplianceRecord } from './model-schemas.ts'
 
 type ApplianceInsert = {
 	ownerId: number

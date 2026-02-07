@@ -78,6 +78,7 @@ function AppliancesPage(handle: Handle) {
 	let message: string | null = null
 	let isSubmitting = false
 	let isLoadQueued = false
+	let editingId: number | null = null
 
 	async function loadAppliances(signal: AbortSignal) {
 		const { controller, cancel } = createTimeoutController(10_000, signal)
@@ -138,6 +139,21 @@ function AppliancesPage(handle: Handle) {
 		message = null
 	}
 
+	function setEditingId(nextId: number | null) {
+		editingId = nextId
+	}
+
+	function buildFormBody(formData: FormData, intent: string) {
+		formData.set('intent', intent)
+		const body = new URLSearchParams()
+		for (const [key, value] of formData.entries()) {
+			if (typeof value === 'string') {
+				body.set(key, value)
+			}
+		}
+		return body
+	}
+
 	async function submitForm(body: URLSearchParams): Promise<boolean> {
 		let didSucceed = false
 		if (isSubmitting) return false
@@ -191,18 +207,23 @@ function AppliancesPage(handle: Handle) {
 		return didSucceed
 	}
 
+	function startEdit(applianceId: number) {
+		setMessage(null)
+		setEditingId(applianceId)
+		handle.update()
+	}
+
+	function cancelEdit() {
+		setEditingId(null)
+		handle.update()
+	}
+
 	async function handleCreate(event: SubmitEvent) {
 		event.preventDefault()
 		if (!(event.currentTarget instanceof HTMLFormElement)) return
 		const form = event.currentTarget
 		const formData = new FormData(form)
-		formData.set('intent', 'create')
-		const body = new URLSearchParams()
-		for (const [key, value] of formData.entries()) {
-			if (typeof value === 'string') {
-				body.set(key, value)
-			}
-		}
+		const body = buildFormBody(formData, 'create')
 		const didSucceed = await submitForm(body)
 		if (didSucceed) {
 			form.reset()
@@ -213,14 +234,20 @@ function AppliancesPage(handle: Handle) {
 		event.preventDefault()
 		if (!(event.currentTarget instanceof HTMLFormElement)) return
 		const formData = new FormData(event.currentTarget)
-		formData.set('intent', 'delete')
-		const body = new URLSearchParams()
-		for (const [key, value] of formData.entries()) {
-			if (typeof value === 'string') {
-				body.set(key, value)
-			}
-		}
+		const body = buildFormBody(formData, 'delete')
 		await submitForm(body)
+	}
+
+	async function handleUpdate(event: SubmitEvent) {
+		event.preventDefault()
+		if (!(event.currentTarget instanceof HTMLFormElement)) return
+		const formData = new FormData(event.currentTarget)
+		const body = buildFormBody(formData, 'update')
+		const didSucceed = await submitForm(body)
+		if (didSucceed) {
+			setEditingId(null)
+			handle.update()
+		}
 	}
 
 	return () => {
@@ -488,60 +515,292 @@ function AppliancesPage(handle: Handle) {
 							<li
 								key={appliance.id}
 								css={{
-									display: 'flex',
-									justifyContent: 'space-between',
-									alignItems: 'center',
+									display: 'grid',
+									gap: spacing.sm,
 									padding: spacing.md,
 									borderRadius: radius.md,
 									border: `1px solid ${colors.border}`,
 									backgroundColor: colors.surface,
 								}}
 							>
-								<div css={{ display: 'grid', gap: spacing.xs }}>
-									<span
-										css={{
-											fontWeight: typography.fontWeight.medium,
-											color: colors.text,
-										}}
+								{editingId === appliance.id ? (
+									<form
+										css={{ display: 'grid', gap: spacing.sm }}
+										on={{ submit: handleUpdate }}
 									>
-										{appliance.name}
-									</span>
-									<span css={{ color: colors.textMuted }}>
-										{appliance.watts} W
-									</span>
-									{appliance.notes ? (
-										<span
+										<input type="hidden" name="id" value={appliance.id} />
+										<label css={{ display: 'grid', gap: spacing.xs }}>
+											<span
+												css={{
+													color: colors.text,
+													fontWeight: typography.fontWeight.medium,
+													fontSize: typography.fontSize.sm,
+												}}
+											>
+												Edit appliance name
+											</span>
+											<input
+												type="text"
+												name="name"
+												required
+												defaultValue={appliance.name}
+												disabled={isSubmitting}
+												css={{
+													padding: spacing.sm,
+													borderRadius: radius.md,
+													border: `1px solid ${colors.border}`,
+													fontSize: typography.fontSize.base,
+													fontFamily: typography.fontFamily,
+												}}
+											/>
+										</label>
+										<label css={{ display: 'grid', gap: spacing.xs }}>
+											<span
+												css={{
+													color: colors.text,
+													fontWeight: typography.fontWeight.medium,
+													fontSize: typography.fontSize.sm,
+												}}
+											>
+												Edit notes (optional)
+											</span>
+											<textarea
+												name="notes"
+												rows={3}
+												maxLength={500}
+												defaultValue={appliance.notes ?? ''}
+												disabled={isSubmitting}
+												css={{
+													padding: spacing.sm,
+													borderRadius: radius.md,
+													border: `1px solid ${colors.border}`,
+													fontSize: typography.fontSize.base,
+													fontFamily: typography.fontFamily,
+													resize: 'vertical',
+												}}
+											/>
+										</label>
+										<label css={{ display: 'grid', gap: spacing.xs }}>
+											<span
+												css={{
+													color: colors.text,
+													fontWeight: typography.fontWeight.medium,
+													fontSize: typography.fontSize.sm,
+												}}
+											>
+												Edit watts
+											</span>
+											<input
+												type="number"
+												name="watts"
+												min="1"
+												step="1"
+												defaultValue={appliance.watts}
+												disabled={isSubmitting}
+												css={{
+													padding: spacing.sm,
+													borderRadius: radius.md,
+													border: `1px solid ${colors.border}`,
+													fontSize: typography.fontSize.base,
+													fontFamily: typography.fontFamily,
+												}}
+											/>
+										</label>
+										<p css={{ margin: 0, color: colors.textMuted }}>
+											Or enter amps and volts instead.
+										</p>
+										<div css={{ display: 'grid', gap: spacing.md }}>
+											<label css={{ display: 'grid', gap: spacing.xs }}>
+												<span
+													css={{
+														color: colors.text,
+														fontWeight: typography.fontWeight.medium,
+														fontSize: typography.fontSize.sm,
+													}}
+												>
+													Edit amps
+												</span>
+												<input
+													type="number"
+													name="amps"
+													min="0"
+													step="0.1"
+													disabled={isSubmitting}
+													css={{
+														padding: spacing.sm,
+														borderRadius: radius.md,
+														border: `1px solid ${colors.border}`,
+														fontSize: typography.fontSize.base,
+														fontFamily: typography.fontFamily,
+													}}
+												/>
+											</label>
+											<label css={{ display: 'grid', gap: spacing.xs }}>
+												<span
+													css={{
+														color: colors.text,
+														fontWeight: typography.fontWeight.medium,
+														fontSize: typography.fontSize.sm,
+													}}
+												>
+													Edit volts
+												</span>
+												<input
+													type="number"
+													name="volts"
+													min="0"
+													step="1"
+													disabled={isSubmitting}
+													css={{
+														padding: spacing.sm,
+														borderRadius: radius.md,
+														border: `1px solid ${colors.border}`,
+														fontSize: typography.fontSize.base,
+														fontFamily: typography.fontFamily,
+													}}
+												/>
+											</label>
+										</div>
+										<div
 											css={{
-												color: colors.textMuted,
-												fontSize: typography.fontSize.sm,
-												whiteSpace: 'pre-wrap',
+												display: 'flex',
+												gap: spacing.sm,
+												flexWrap: 'wrap',
 											}}
 										>
-											{appliance.notes}
-										</span>
-									) : null}
-								</div>
-								<form on={{ submit: handleDelete }}>
-									<input type="hidden" name="id" value={appliance.id} />
-									<button
-										type="submit"
-										disabled={isSubmitting}
-										aria-label={`Delete ${appliance.name}`}
+											<button
+												type="submit"
+												disabled={isSubmitting}
+												css={{
+													padding: `${spacing.xs} ${spacing.md}`,
+													borderRadius: radius.full,
+													border: 'none',
+													backgroundColor: colors.primary,
+													color: colors.onPrimary,
+													fontSize: typography.fontSize.sm,
+													fontWeight: typography.fontWeight.semibold,
+													cursor: isSubmitting ? 'not-allowed' : 'pointer',
+													opacity: isSubmitting ? 0.7 : 1,
+													transition: `transform ${transitions.fast}, background-color ${transitions.normal}`,
+													'&:hover': isSubmitting
+														? undefined
+														: {
+																backgroundColor: colors.primaryHover,
+																transform: 'translateY(-1px)',
+															},
+													'&:active': isSubmitting
+														? undefined
+														: {
+																backgroundColor: colors.primaryActive,
+																transform: 'translateY(0)',
+															},
+												}}
+											>
+												{isSubmitting ? 'Saving...' : 'Save changes'}
+											</button>
+											<button
+												type="button"
+												disabled={isSubmitting}
+												on={{ click: cancelEdit }}
+												css={{
+													padding: `${spacing.xs} ${spacing.md}`,
+													borderRadius: radius.full,
+													border: `1px solid ${colors.border}`,
+													backgroundColor: 'transparent',
+													color: colors.text,
+													fontSize: typography.fontSize.sm,
+													fontWeight: typography.fontWeight.medium,
+													cursor: isSubmitting ? 'not-allowed' : 'pointer',
+													opacity: isSubmitting ? 0.7 : 1,
+												}}
+											>
+												Cancel
+											</button>
+										</div>
+									</form>
+								) : (
+									<div
 										css={{
-											padding: `${spacing.xs} ${spacing.md}`,
-											borderRadius: radius.full,
-											border: `1px solid ${colors.border}`,
-											backgroundColor: 'transparent',
-											color: colors.text,
-											fontSize: typography.fontSize.sm,
-											fontWeight: typography.fontWeight.medium,
-											cursor: isSubmitting ? 'not-allowed' : 'pointer',
-											opacity: isSubmitting ? 0.7 : 1,
+											display: 'flex',
+											justifyContent: 'space-between',
+											alignItems: 'center',
+											gap: spacing.md,
 										}}
 									>
-										Delete
-									</button>
-								</form>
+										<div css={{ display: 'grid', gap: spacing.xs }}>
+											<span
+												css={{
+													fontWeight: typography.fontWeight.medium,
+													color: colors.text,
+												}}
+											>
+												{appliance.name}
+											</span>
+											<span css={{ color: colors.textMuted }}>
+												{appliance.watts} W
+											</span>
+											{appliance.notes ? (
+												<span
+													css={{
+														color: colors.textMuted,
+														fontSize: typography.fontSize.sm,
+														whiteSpace: 'pre-wrap',
+													}}
+												>
+													{appliance.notes}
+												</span>
+											) : null}
+										</div>
+										<div
+											css={{
+												display: 'flex',
+												gap: spacing.sm,
+												alignItems: 'center',
+											}}
+										>
+											<button
+												type="button"
+												disabled={isSubmitting}
+												aria-label={`Edit ${appliance.name}`}
+												on={{ click: () => startEdit(appliance.id) }}
+												css={{
+													padding: `${spacing.xs} ${spacing.md}`,
+													borderRadius: radius.full,
+													border: `1px solid ${colors.border}`,
+													backgroundColor: 'transparent',
+													color: colors.text,
+													fontSize: typography.fontSize.sm,
+													fontWeight: typography.fontWeight.medium,
+													cursor: isSubmitting ? 'not-allowed' : 'pointer',
+													opacity: isSubmitting ? 0.7 : 1,
+												}}
+											>
+												Edit
+											</button>
+											<form on={{ submit: handleDelete }}>
+												<input type="hidden" name="id" value={appliance.id} />
+												<button
+													type="submit"
+													disabled={isSubmitting}
+													aria-label={`Delete ${appliance.name}`}
+													css={{
+														padding: `${spacing.xs} ${spacing.md}`,
+														borderRadius: radius.full,
+														border: `1px solid ${colors.border}`,
+														backgroundColor: 'transparent',
+														color: colors.text,
+														fontSize: typography.fontSize.sm,
+														fontWeight: typography.fontWeight.medium,
+														cursor: isSubmitting ? 'not-allowed' : 'pointer',
+														opacity: isSubmitting ? 0.7 : 1,
+													}}
+												>
+													Delete
+												</button>
+											</form>
+										</div>
+									</div>
+								)}
 							</li>
 						))}
 					</ul>
