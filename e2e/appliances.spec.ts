@@ -1,9 +1,26 @@
-import { expect, test, type Page } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
+import {
+	expect,
+	test,
+	type APIRequestContext,
+	type Page,
+} from '@playwright/test'
 
-async function login(page: Page) {
+async function registerUser(
+	request: APIRequestContext,
+	email: string,
+	password: string,
+) {
+	const response = await request.post('/auth', {
+		data: { email, password, mode: 'signup' },
+	})
+	expect(response.ok()).toBeTruthy()
+}
+
+async function login(page: Page, email: string, password: string) {
 	await page.goto('/login')
-	await page.getByLabel('Email').fill('user@example.com')
-	await page.getByLabel('Password').fill('password123')
+	await page.getByLabel('Email').fill(email)
+	await page.getByLabel('Password').fill(password)
 	await page.getByRole('button', { name: 'Sign in' }).click()
 	await expect(page).toHaveURL(/\/account$/)
 }
@@ -21,7 +38,11 @@ test('redirects logged-out users to login', async ({ page }) => {
 })
 
 test('manages appliances and totals', async ({ page }) => {
-	await login(page)
+	const email = `user-${randomUUID()}@example.com`
+	const password = 'password123'
+	await registerUser(page.request, email, password)
+	await page.context().clearCookies()
+	await login(page, email, password)
 
 	await page.goto('/appliances')
 	await expect(page.getByRole('heading', { name: 'Appliances' })).toBeVisible()
