@@ -1,10 +1,14 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { readdir } from 'node:fs/promises'
 import { platform } from 'node:os'
+import { join } from 'node:path'
 import readline from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import getPort, { clearLockedPorts } from 'get-port'
 
 const defaultWorkerPort = 3742
+const defaultMockPort = 4599
+const mockServerPattern = /^mock-[a-z0-9-]+-server\.ts$/i
 
 const ansiReset = '\x1b[0m'
 const ansiBright = '\x1b[1m'
@@ -35,6 +39,7 @@ const outputFilters: Record<OutputFilterKey, Array<RegExp>> = {
 const extraArgs = process.argv.slice(2)
 let shutdown: (() => void) | null = null
 let devChildren: Array<ChildProcess> = []
+let mockChildren: Array<ChildProcess> = []
 let workerOrigin = ''
 
 void startDev()
@@ -45,7 +50,7 @@ async function startDev() {
 		getWorkerOrigin: () => workerOrigin,
 		restart: restartDev,
 	})
-	shutdown = setupShutdown(() => devChildren)
+	shutdown = setupShutdown(() => devChildren, () => mockChildren)
 }
 
 function resolveWorkerOrigin(port: number) {
@@ -105,10 +110,13 @@ function pipeStream(
 	})
 }
 
-function setupShutdown(getChildren: () => Array<ChildProcess>) {
+function setupShutdown(
+	getChildren: () => Array<ChildProcess>,
+	getMockChildren: () => Array<ChildProcess>,
+) {
 	function doShutdown() {
 		console.log(dim('\nShutting down...'))
-		for (const child of getChildren()) {
+		for (const child of [...getChildren(), ...getMockChildren()]) {
 			if (!child.killed) {
 				child.kill('SIGINT')
 			}
@@ -201,7 +209,8 @@ function showHelp(header?: string) {
 async function restartDev(
 	{ announce }: { announce: boolean } = { announce: true },
 ) {
-	await stopChildren(devChildren)
+	await stopChildren([...devChildren, ...mockChildren])
+	mockChildren = await startMockServers()
 	const desiredPort = Number.parseInt(
 		process.env.PORT ?? String(defaultWorkerPort),
 		10,
@@ -233,6 +242,68 @@ async function restartDev(
 		console.log(dim('\nRestarted dev servers.'))
 		logAppRunning(() => workerOrigin)
 	}
+}
+
+type MockServerScript = {
+	name: string
+	slug: string
+	scriptPath: string
+}
+
+async function startMockServers(): Promise<Array<ChildProcess>> {
+	const scripts = await discoverMockServerScripts()
+	if (scripts.length === 0) {
+		return []
+	}
+
+	const basePort = Number.parseInt(
+		process.env.MOCK_API_PORT ?? String(defaultMockPort),
+		10,
+	)
+	let nextPort = Number.isFinite(basePort) ? basePort : defaultMockPort
+
+	return Promise.all(
+		scripts.map(async (script) => {
+			const portRange = Array.from(
+				{ length: 10 },
+				(_, index) => nextPort + index,
+			)
+			const port = await getPort({ port: portRange })
+			nextPort = port + 1
+			return runBunScript(
+				script.scriptPath,
+				[],
+				{
+					MOCK_API_PORT: String(port),
+					MOCK_API_STORAGE_DIR: join('.mock-api', script.slug),
+				},
+				{ outputFilter: 'default' },
+			)
+		}),
+	)
+}
+
+async function discoverMockServerScripts(): Promise<Array<MockServerScript>> {
+	const toolsDir = join(process.cwd(), 'tools')
+	const entries = await readdir(toolsDir, { withFileTypes: true }).catch(
+		() => [],
+	)
+	const scripts = entries
+		.filter(
+			(entry) => entry.isFile() && mockServerPattern.test(entry.name),
+		)
+		.map((entry) => {
+			const name = entry.name.replace(/\.ts$/i, '')
+			const slug = name.replace(/-server$/i, '')
+			return {
+				name,
+				slug,
+				scriptPath: join('tools', entry.name),
+			}
+		})
+		.sort((left, right) => left.name.localeCompare(right.name))
+
+	return scripts
 }
 
 async function stopChildren(children: Array<ChildProcess>) {

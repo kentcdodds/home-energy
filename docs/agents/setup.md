@@ -18,6 +18,7 @@ Quick notes for getting a local epicflare environment running.
 - If you only need the client bundle or worker, use:
   - `bun run dev:client`
   - `bun run dev:worker`
+- `bun run dev` auto-starts any `tools/mock-*-server.ts` scripts.
 - Run `bun run dev:mock-api` to capture Resend emails locally.
 - Set `RESEND_API_BASE_URL=http://localhost:4599` when using the mock API.
 - Set `CLOUDFLARE_ENV` to switch Wrangler environments (defaults to
