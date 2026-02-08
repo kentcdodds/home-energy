@@ -89,6 +89,7 @@ type AuthMode = 'login' | 'signup'
 type AuthStatus = 'idle' | 'submitting' | 'success' | 'error'
 type SessionStatus = 'idle' | 'loading' | 'ready'
 type AccountStatus = 'idle' | 'loading' | 'ready' | 'error'
+type PasswordResetStatus = 'idle' | 'submitting' | 'success' | 'error'
 
 type LoginFormSetup = {
 	initialMode?: AuthMode
@@ -361,6 +362,26 @@ function LoginForm(handle: Handle, setup: LoginFormSetup = {}) {
 					>
 						{toggleLabel} {toggleAction}
 					</a>
+					{!isSignup ? (
+						<a
+							href="/password-reset"
+							css={{
+								background: 'none',
+								border: 'none',
+								padding: 0,
+								color: colors.primaryText,
+								fontSize: typography.fontSize.sm,
+								cursor: 'pointer',
+								textAlign: 'left',
+								textDecoration: 'none',
+								'&:hover': {
+									textDecoration: 'underline',
+								},
+							}}
+						>
+							Forgot your password?
+						</a>
+					) : null}
 					<a
 						href="/"
 						css={{
@@ -383,6 +404,307 @@ function LoginForm(handle: Handle, setup: LoginFormSetup = {}) {
 export function LoginRoute(initialMode: AuthMode = 'login') {
 	return (_match: { path: string; params: Record<string, string> }) => (
 		<LoginForm setup={{ initialMode }} />
+	)
+}
+
+function PasswordResetForm(handle: Handle) {
+	let status: PasswordResetStatus = 'idle'
+	let message: string | null = null
+	let lastToken = ''
+
+	function setState(
+		nextStatus: PasswordResetStatus,
+		nextMessage: string | null = null,
+	) {
+		status = nextStatus
+		message = nextMessage
+		handle.update()
+	}
+
+	function getToken() {
+		const token = String(getSearchParams().get('token') ?? '').trim()
+		if (token !== lastToken) {
+			lastToken = token
+			status = 'idle'
+			message = null
+		}
+		return token
+	}
+
+	async function handleSubmit(event: SubmitEvent) {
+		event.preventDefault()
+		if (!(event.currentTarget instanceof HTMLFormElement)) return
+
+		const token = String(getSearchParams().get('token') ?? '').trim()
+		const isResetFlow = Boolean(token)
+		const formData = new FormData(event.currentTarget)
+
+		if (!isResetFlow) {
+			const email = String(formData.get('email') ?? '').trim()
+			if (!email) {
+				setState('error', 'Email is required.')
+				return
+			}
+			setState('submitting')
+			try {
+				const response = await fetch('/password-reset', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ email }),
+				})
+				const payload = await response.json().catch(() => null)
+				if (!response.ok) {
+					const errorMessage =
+						typeof payload?.error === 'string'
+							? payload.error
+							: 'Unable to send reset email.'
+					setState('error', errorMessage)
+					return
+				}
+				setState('success', 'If an account exists, a reset link is on the way.')
+			} catch {
+				setState('error', 'Network error. Please try again.')
+			}
+			return
+		}
+
+		const password = String(formData.get('password') ?? '')
+		const confirm = String(formData.get('confirm-password') ?? '')
+		if (!password) {
+			setState('error', 'New password is required.')
+			return
+		}
+		if (password !== confirm) {
+			setState('error', 'Passwords do not match.')
+			return
+		}
+
+		setState('submitting')
+		try {
+			const response = await fetch('/password-reset/confirm', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ token, password }),
+			})
+			const payload = await response.json().catch(() => null)
+			if (!response.ok) {
+				const errorMessage =
+					typeof payload?.error === 'string'
+						? payload.error
+						: 'Unable to reset password.'
+				setState('error', errorMessage)
+				return
+			}
+			setState('success', 'Password updated. You can sign in now.')
+		} catch {
+			setState('error', 'Network error. Please try again.')
+		}
+	}
+
+	return () => {
+		const token = getToken()
+		const isResetFlow = Boolean(token)
+		const isSubmitting = status === 'submitting'
+		const title = isResetFlow ? 'Choose a new password' : 'Reset your password'
+		const description = isResetFlow
+			? 'Enter a new password for your account.'
+			: 'Enter your email to receive a password reset link.'
+		const submitLabel = isResetFlow ? 'Update password' : 'Send reset link'
+
+		return (
+			<section
+				css={{
+					maxWidth: '28rem',
+					margin: '0 auto',
+					display: 'grid',
+					gap: spacing.lg,
+				}}
+			>
+				<header css={{ display: 'grid', gap: spacing.xs }}>
+					<h2
+						css={{
+							fontSize: typography.fontSize.xl,
+							fontWeight: typography.fontWeight.semibold,
+							color: colors.text,
+						}}
+					>
+						{title}
+					</h2>
+					<p css={{ color: colors.textMuted }}>{description}</p>
+				</header>
+				<form
+					css={{
+						display: 'grid',
+						gap: spacing.md,
+						padding: spacing.lg,
+						borderRadius: radius.lg,
+						border: `1px solid ${colors.border}`,
+						backgroundColor: colors.surface,
+						boxShadow: shadows.sm,
+					}}
+					on={{ submit: handleSubmit }}
+				>
+					{!isResetFlow ? (
+						<label css={{ display: 'grid', gap: spacing.xs }}>
+							<span
+								css={{
+									color: colors.text,
+									fontWeight: typography.fontWeight.medium,
+									fontSize: typography.fontSize.sm,
+								}}
+							>
+								Email
+							</span>
+							<input
+								type="email"
+								name="email"
+								required
+								autoComplete="email"
+								placeholder="you@example.com"
+								disabled={isSubmitting}
+								css={{
+									padding: spacing.sm,
+									borderRadius: radius.md,
+									border: `1px solid ${colors.border}`,
+									fontSize: typography.fontSize.base,
+									fontFamily: typography.fontFamily,
+								}}
+							/>
+						</label>
+					) : (
+						<>
+							<label css={{ display: 'grid', gap: spacing.xs }}>
+								<span
+									css={{
+										color: colors.text,
+										fontWeight: typography.fontWeight.medium,
+										fontSize: typography.fontSize.sm,
+									}}
+								>
+									New password
+								</span>
+								<input
+									type="password"
+									name="password"
+									required
+									autoComplete="new-password"
+									placeholder="Choose a new password"
+									disabled={isSubmitting}
+									css={{
+										padding: spacing.sm,
+										borderRadius: radius.md,
+										border: `1px solid ${colors.border}`,
+										fontSize: typography.fontSize.base,
+										fontFamily: typography.fontFamily,
+									}}
+								/>
+							</label>
+							<label css={{ display: 'grid', gap: spacing.xs }}>
+								<span
+									css={{
+										color: colors.text,
+										fontWeight: typography.fontWeight.medium,
+										fontSize: typography.fontSize.sm,
+									}}
+								>
+									Confirm password
+								</span>
+								<input
+									type="password"
+									name="confirm-password"
+									required
+									autoComplete="new-password"
+									placeholder="Re-enter password"
+									disabled={isSubmitting}
+									css={{
+										padding: spacing.sm,
+										borderRadius: radius.md,
+										border: `1px solid ${colors.border}`,
+										fontSize: typography.fontSize.base,
+										fontFamily: typography.fontFamily,
+									}}
+								/>
+							</label>
+						</>
+					)}
+					<button
+						type="submit"
+						disabled={isSubmitting}
+						css={{
+							padding: `${spacing.sm} ${spacing.lg}`,
+							borderRadius: radius.full,
+							border: 'none',
+							backgroundColor: colors.primary,
+							color: colors.onPrimary,
+							fontSize: typography.fontSize.base,
+							fontWeight: typography.fontWeight.semibold,
+							cursor: isSubmitting ? 'not-allowed' : 'pointer',
+							opacity: isSubmitting ? 0.7 : 1,
+							transition: `transform ${transitions.fast}, background-color ${transitions.normal}`,
+							'&:hover': isSubmitting
+								? undefined
+								: {
+										backgroundColor: colors.primaryHover,
+										transform: 'translateY(-1px)',
+									},
+							'&:active': isSubmitting
+								? undefined
+								: {
+										backgroundColor: colors.primaryActive,
+										transform: 'translateY(0)',
+									},
+						}}
+					>
+						{isSubmitting ? 'Submitting...' : submitLabel}
+					</button>
+					{message ? (
+						<p
+							css={{
+								color: status === 'error' ? colors.error : colors.text,
+								fontSize: typography.fontSize.sm,
+							}}
+							aria-live="polite"
+						>
+							{message}
+						</p>
+					) : null}
+				</form>
+				<div css={{ display: 'grid', gap: spacing.sm }}>
+					<a
+						href="/login"
+						css={{
+							color: colors.primaryText,
+							fontSize: typography.fontSize.sm,
+							textDecoration: 'none',
+							'&:hover': {
+								textDecoration: 'underline',
+							},
+						}}
+					>
+						Back to sign in
+					</a>
+					<a
+						href="/"
+						css={{
+							color: colors.textMuted,
+							fontSize: typography.fontSize.sm,
+							textDecoration: 'none',
+							'&:hover': {
+								textDecoration: 'underline',
+							},
+						}}
+					>
+						Back home
+					</a>
+				</div>
+			</section>
+		)
+	}
+}
+
+export function PasswordResetRoute() {
+	return (_match: { path: string; params: Record<string, string> }) => (
+		<PasswordResetForm />
 	)
 }
 

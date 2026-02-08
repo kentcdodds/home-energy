@@ -26,6 +26,7 @@ package-lock.json
 .wrangler
 .env
 .dev.vars
+.mock-api
 playwright-report
 test-results
 public/client-entry.js

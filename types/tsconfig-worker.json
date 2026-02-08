@@ -24,5 +24,14 @@
 		"../types/env-schema.ts",
 		"../types/worker-configuration.d.ts"
 	],
-	"exclude": ["**/*.test.ts", "**/*.spec.ts"]
+	"exclude": [
+		"../server/**/*.test.ts",
+		"../server/**/*.spec.ts",
+		"../worker/**/*.test.ts",
+		"../worker/**/*.spec.ts",
+		"../mcp/**/*.test.ts",
+		"../mcp/**/*.spec.ts",
+		"**/*.test.ts",
+		"**/*.spec.ts"
+	]
 }

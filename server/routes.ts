@@ -6,9 +6,12 @@ const routes = route({
 	account: '/account',
 	login: '/login',
 	signup: '/signup',
+	passwordReset: '/password-reset',
 	logout: post('/logout'),
 	session: '/session',
 	auth: post('/auth'),
+	passwordResetRequest: post('/password-reset'),
+	passwordResetConfirm: post('/password-reset/confirm'),
 	appliances: form('appliances'),
 })
 

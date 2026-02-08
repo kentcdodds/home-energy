@@ -40,6 +40,14 @@ types, runtime validation, and documentation in sync.
    - Add the variable to `.github/workflows/deploy.yml` so it is pushed via
      `wrangler secret put`.
 
+## Current variables
+
+- `COOKIE_SECRET` (required)
+- `RESEND_API_KEY` (optional; required for production email delivery)
+- `RESEND_API_BASE_URL` (optional; defaults to `https://api.resend.com`)
+- `RESEND_FROM_EMAIL` (optional; defaults to `no-reply@epicflare.dev`)
+- `CLOUDFLARE_ENV` (optional; used to detect production vs preview/test)
+
 ## Why Zod?
 
 Zod gives type inference for `Env`-driven values and a single runtime gate that
