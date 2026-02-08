@@ -15,7 +15,7 @@ type ApplianceInput = {
 
 type ApplianceEditInput = {
 	id: number
-	name: string
+	name?: string
 	watts?: number
 	amps?: number
 	volts?: number
@@ -43,7 +43,7 @@ const applianceInputSchema = z
 const applianceEditSchema = z
 	.object({
 		id: z.number().int().positive(),
-		name: z.string().min(1, 'Name is required.'),
+		name: z.string().min(1, 'Name is required.').optional(),
 		watts: z.number().positive().optional(),
 		amps: z.number().positive().optional(),
 		volts: z.number().positive().optional(),
@@ -53,12 +53,26 @@ const applianceEditSchema = z
 			.nullable()
 			.optional(),
 	})
-	.refine(
-		(data) => data.watts != null || (data.amps != null && data.volts != null),
-		{
-			message: 'Provide watts or amps and volts.',
-		},
-	)
+	.superRefine((data, context) => {
+		const hasPowerInput =
+			data.watts != null || data.amps != null || data.volts != null
+		const hasUpdates =
+			data.name != null || data.notes !== undefined || hasPowerInput
+		if (!hasUpdates) {
+			context.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'Provide at least one field to update.',
+			})
+		}
+		if (hasPowerInput && data.watts == null) {
+			if (data.amps == null || data.volts == null) {
+				context.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: 'Provide watts or amps and volts.',
+				})
+			}
+		}
+	})
 
 function sortAppliances(list: Array<ApplianceSummary>) {
 	return [...list].sort((left, right) => {
@@ -99,6 +113,14 @@ type AppliancePowerInput = {
 
 function resolveWatts(input: AppliancePowerInput) {
 	return input.watts ?? input.amps! * input.volts!
+}
+
+function resolveOptionalWatts(input: AppliancePowerInput) {
+	if (input.watts != null) return input.watts
+	if (input.amps != null && input.volts != null) {
+		return input.amps * input.volts
+	}
+	return undefined
 }
 
 function resolveNotes(input: ApplianceInput) {
@@ -226,7 +248,7 @@ export async function registerTools(agent: MCP) {
 		'edit_appliances',
 		{
 			description:
-				'Edit appliances by id and return the updated list and total watts.',
+				'Edit appliances by id (omit fields to keep existing values) and return the updated list and total watts.',
 			inputSchema: {
 				updates: z.array(applianceEditSchema).min(1),
 			},
@@ -239,12 +261,20 @@ export async function registerTools(agent: MCP) {
 			const missingIds: Array<number> = []
 
 			for (const update of updates) {
-				const watts = resolveWatts(update)
+				const existing = await store.getById({
+					id: update.id,
+					ownerId,
+				})
+				if (!existing) {
+					missingIds.push(update.id)
+					continue
+				}
+				const watts = resolveOptionalWatts(update) ?? existing.watts
 				const notes = resolveOptionalNotes(update)
 				const record = await store.update({
 					id: update.id,
 					ownerId,
-					name: update.name,
+					name: update.name ?? existing.name,
 					watts,
 					notes,
 				})

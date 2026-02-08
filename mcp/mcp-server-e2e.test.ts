@@ -547,13 +547,37 @@ test(
 		).toBe('Counter outlet.')
 		expect(listJson.totalWatts).toBe(944)
 
-		const firstId = listJson.appliances[0]?.id
-		expect(firstId).toBeDefined()
+		const toaster = listJson.appliances.find((item) => item.name === 'Toaster')
+		const lamp = listJson.appliances.find((item) => item.name === 'Lamp')
+		expect(toaster).toBeDefined()
+		expect(lamp).toBeDefined()
+
+		const editNotesResult = (await mcpClient.client.callTool({
+			name: 'edit_appliances',
+			arguments: {
+				updates: [{ id: lamp!.id, notes: 'Bedroom outlet.' }],
+			},
+		})) as CallToolResult
+		const editNotesJson = getStructuredOutput(editNotesResult) as {
+			ok: boolean
+			appliances: Array<{ id: number; name: string; watts: number }>
+			updated: Array<{
+				id: number
+				name: string
+				watts: number
+				notes: string | null
+			}>
+			totalWatts: number
+		}
+		expect(editNotesJson.ok).toBe(true)
+		expect(editNotesJson.updated.length).toBe(1)
+		expect(editNotesJson.updated[0]?.notes).toBe('Bedroom outlet.')
+		expect(editNotesJson.totalWatts).toBe(944)
 
 		const editResult = (await mcpClient.client.callTool({
 			name: 'edit_appliances',
 			arguments: {
-				updates: [{ id: firstId as number, name: 'Toaster XL', watts: 900 }],
+				updates: [{ id: toaster!.id, name: 'Toaster XL', watts: 900 }],
 			},
 		})) as CallToolResult
 		const editJson = getStructuredOutput(editResult) as {
@@ -582,7 +606,7 @@ test(
 
 		const deleteResult = (await mcpClient.client.callTool({
 			name: 'delete_appliances',
-			arguments: { ids: [firstId as number] },
+			arguments: { ids: [toaster!.id] },
 		})) as CallToolResult
 		const deleteJson = getStructuredOutput(deleteResult) as {
 			ok: boolean
