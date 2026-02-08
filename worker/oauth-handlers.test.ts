@@ -10,6 +10,7 @@ import {
 	createAuthCookie,
 	setAuthSessionSecret,
 } from '../server/auth-session.ts'
+import { createPasswordHash } from '../server/password-hash.ts'
 import {
 	handleAuthorizeInfo,
 	handleAuthorizeRequest,
@@ -31,7 +32,7 @@ const baseClient: ClientInfo = {
 	clientName: 'epicflare Demo',
 	tokenEndpointAuthMethod: 'client_secret_basic',
 }
-const cookieSecret = 'test-secret'
+const cookieSecret = 'test-secret-0123456789abcdef0123456789'
 
 function createHelpers(overrides: Partial<OAuthHelpers> = {}): OAuthHelpers {
 	return {
@@ -51,42 +52,6 @@ function createHelpers(overrides: Partial<OAuthHelpers> = {}): OAuthHelpers {
 		unwrapToken: async () => null,
 		...overrides,
 	}
-}
-
-const passwordHashPrefix = 'pbkdf2_sha256'
-const passwordSaltBytes = 16
-const passwordHashBytes = 32
-const passwordHashIterations = 120_000
-
-function toHex(bytes: Uint8Array) {
-	return Array.from(bytes)
-		.map((value) => value.toString(16).padStart(2, '0'))
-		.join('')
-}
-
-async function createPasswordHash(password: string) {
-	const salt = crypto.getRandomValues(new Uint8Array(passwordSaltBytes))
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(password),
-		'PBKDF2',
-		false,
-		['deriveBits'],
-	)
-	const derivedBits = await crypto.subtle.deriveBits(
-		{
-			name: 'PBKDF2',
-			salt,
-			iterations: passwordHashIterations,
-			hash: 'SHA-256',
-		},
-		key,
-		passwordHashBytes * 8,
-	)
-	const hash = new Uint8Array(derivedBits)
-	return `${passwordHashPrefix}$${passwordHashIterations}$${toHex(salt)}$${toHex(
-		hash,
-	)}`
 }
 
 async function createDatabase(password: string) {
@@ -114,9 +79,10 @@ function createEnv(
 	appDb?: D1Database,
 	cookieSecretValue: string = cookieSecret,
 ) {
+	const resolvedDb = appDb ?? ({} as D1Database)
 	return {
 		OAUTH_PROVIDER: helpers,
-		APP_DB: appDb,
+		APP_DB: resolvedDb,
 		COOKIE_SECRET: cookieSecretValue,
 	} as unknown as Env
 }
