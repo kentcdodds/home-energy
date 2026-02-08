@@ -237,26 +237,33 @@ export function createPasswordResetConfirmHandler(appEnv: AppEnv) {
 				)
 			}
 
+			const now = Date.now()
 			const tokenHash = await hashResetToken(token)
 			const resetRecord = await db.queryFirst(
-				sql`SELECT id, user_id, expires_at FROM password_resets WHERE token_hash = ${tokenHash}`,
+				sql`
+					DELETE FROM password_resets
+					WHERE token_hash = ${tokenHash} AND expires_at >= ${now}
+					RETURNING id, user_id, expires_at
+				`,
 				resetTokenSchema,
 			)
-			const now = Date.now()
 
-			if (!resetRecord || resetRecord.expires_at < now) {
-				if (resetRecord && resetRecord.expires_at < now) {
-					await db.exec(
-						sql`DELETE FROM password_resets WHERE id = ${resetRecord.id}`,
-					)
-				}
+			if (!resetRecord) {
+				const expiredRecord = await db.queryFirst(
+					sql`
+						DELETE FROM password_resets
+						WHERE token_hash = ${tokenHash} AND expires_at < ${now}
+						RETURNING id, user_id, expires_at
+					`,
+					resetTokenSchema,
+				)
 				void logAuditEvent({
 					category: 'auth',
 					action: 'password_reset_confirm',
 					result: 'failure',
 					ip: requestIp,
 					path: url.pathname,
-					reason: resetRecord ? 'expired_token' : 'invalid_token',
+					reason: expiredRecord ? 'expired_token' : 'invalid_token',
 				})
 				return Response.json(
 					{ error: 'Reset link is invalid or expired.' },
