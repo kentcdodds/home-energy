@@ -10,6 +10,7 @@ import {
 } from '../password-hash.ts'
 import type { AppEnv } from '../../types/env-schema.ts'
 import { createDb, sql } from '../../worker/db.ts'
+import { userIdSchema } from '../../worker/model-schemas.ts'
 import type routes from '../routes.ts'
 
 type AuthMode = 'login' | 'signup'
@@ -34,7 +35,6 @@ function isUniqueConstraintError(error: unknown) {
 	)
 }
 const userLookupSchema = z.object({ id: z.number(), password_hash: z.string() })
-const userIdSchema = z.object({ id: z.number() })
 export function createAuthHandler(appEnv: AppEnv) {
 	const db = createDb(appEnv.APP_DB)
 
