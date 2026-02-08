@@ -3,7 +3,11 @@ import { z } from 'zod'
 import { createAuthCookie } from '../auth-session.ts'
 import { getRequestIp, logAuditEvent } from '../audit-log.ts'
 import { normalizeEmail } from '../normalize-email.ts'
-import { createPasswordHash, verifyPassword } from '../password-hash.ts'
+import {
+	createPasswordHash,
+	dummyPasswordHash,
+	verifyPassword,
+} from '../password-hash.ts'
 import type { AppEnv } from '../../types/env-schema.ts'
 import { createDb, sql } from '../../worker/db.ts'
 import type routes from '../routes.ts'
@@ -31,9 +35,6 @@ function isUniqueConstraintError(error: unknown) {
 }
 const userLookupSchema = z.object({ id: z.number(), password_hash: z.string() })
 const userIdSchema = z.object({ id: z.number() })
-const dummyPasswordHash =
-	'pbkdf2_sha256$120000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000'
-
 export function createAuthHandler(appEnv: AppEnv) {
 	const db = createDb(appEnv.APP_DB)
 

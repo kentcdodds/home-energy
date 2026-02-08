@@ -9,7 +9,7 @@ import {
 } from '../server/auth-session.ts'
 import { getEnv } from '../server/env.ts'
 import { toHex } from '../server/hex.ts'
-import { verifyPassword } from '../server/password-hash.ts'
+import { dummyPasswordHash, verifyPassword } from '../server/password-hash.ts'
 import { Layout } from '../server/layout.ts'
 import { render } from '../server/render.ts'
 import { createDb, sql } from './db.ts'
@@ -44,9 +44,6 @@ type OAuthContext = ExecutionContext & {
 function renderSpaShell(status = 200) {
 	return render(Layout({}), { status })
 }
-
-const dummyPasswordHash =
-	'pbkdf2_sha256$120000$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000'
 
 async function createUserId(email: string) {
 	const normalized = email.trim().toLowerCase()

@@ -5,6 +5,9 @@ const passwordSaltBytes = 16
 const passwordHashBytes = 32
 const passwordHashIterations = 120_000
 const legacyPasswordHashPattern = /^[0-9a-f]{64}$/i
+export const dummyPasswordHash = `${passwordHashPrefix}$${passwordHashIterations}$${toHex(
+	new Uint8Array(passwordSaltBytes),
+)}$${toHex(new Uint8Array(passwordHashBytes))}`
 
 function fromHex(value: string): Uint8Array<ArrayBuffer> | null {
 	const normalized = value.trim().toLowerCase()
