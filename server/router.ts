@@ -6,6 +6,10 @@ import { login, signup } from './handlers/auth-pages.ts'
 import health from './handlers/health.ts'
 import home from './handlers/home.ts'
 import logout from './handlers/logout.ts'
+import {
+	createPasswordResetConfirmHandler,
+	createPasswordResetRequestHandler,
+} from './handlers/password-reset.ts'
 import session from './handlers/session.ts'
 import { Layout } from './layout.ts'
 import { render } from './render.ts'
@@ -28,6 +32,14 @@ export function createAppRouter(appEnv: AppEnv) {
 	router.map(routes.session, session)
 	router.post(routes.auth, createAuthHandler(appEnv))
 	router.post(routes.logout, logout)
+	router.post(
+		routes.passwordResetRequest,
+		createPasswordResetRequestHandler(appEnv),
+	)
+	router.post(
+		routes.passwordResetConfirm,
+		createPasswordResetConfirmHandler(appEnv),
+	)
 
 	const appliances = createAppliancesHandlers(appEnv)
 	router.get(routes.appliances.index, appliances.index)
