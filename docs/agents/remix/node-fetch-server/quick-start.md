@@ -155,11 +155,6 @@ let handler: FetchHandler = async (request, client) => {
 	// Log client information
 	console.log(`Request from ${client.address}:${client.port}`)
 
-	// Use for rate limiting, geolocation, etc.
-	if (isRateLimited(client.address)) {
-		return new Response('Too Many Requests', { status: 429 })
-	}
-
 	return Response.json({
 		message: 'Hello!',
 		yourIp: client.address,

@@ -32,8 +32,6 @@ are available outside the Remix UI.
   can apply appropriate UX safeguards.
 - Support cancellation: pass request metadata through to tools and abort
   long-running work when the client cancels.
-- Add rate limiting, concurrency gates, and retry-with-backoff around external
-  API calls to handle 429s and bursty usage.
 - Separate client auth from provider credentials; avoid leaking provider tokens
   to clients and store secrets securely.
 - Provide basic operational endpoints and metadata (health, server info,

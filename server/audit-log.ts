@@ -3,7 +3,7 @@ import { toHex } from './hex.ts'
 type AuditEvent = {
 	category: 'auth' | 'oauth'
 	action: string
-	result: 'success' | 'failure' | 'rate_limited'
+	result: 'success' | 'failure'
 	email?: string
 	ip?: string
 	clientId?: string
