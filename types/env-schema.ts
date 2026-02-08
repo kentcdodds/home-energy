@@ -4,8 +4,16 @@ const d1DatabaseSchema = z.custom<D1Database>((value) => Boolean(value), {
 	message: 'Missing APP_DB binding.',
 })
 
-const optionalStringSchema = z.string().min(1).optional()
-const optionalUrlSchema = z.string().url().optional()
+const optionalStringSchema = z.preprocess((value) => {
+	if (typeof value !== 'string') return value
+	const trimmed = value.trim()
+	return trimmed.length > 0 ? trimmed : undefined
+}, z.string().optional())
+const optionalUrlSchema = z.preprocess((value) => {
+	if (typeof value !== 'string') return value
+	const trimmed = value.trim()
+	return trimmed.length > 0 ? trimmed : undefined
+}, z.string().url().optional())
 const cloudflareEnvSchema = z
 	.enum(['production', 'preview', 'test', 'development'])
 	.optional()
