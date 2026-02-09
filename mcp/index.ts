@@ -33,11 +33,23 @@ async function ensureUserId(db: ReturnType<typeof createDb>, email: string) {
 }
 
 export type State = {}
+export type ApplianceSimulationControl = {
+	enabled: boolean
+	hoursPerDay: number
+	dutyCyclePercent: number
+	startHour: number
+	quantity: number
+	overrideWatts: number | null
+}
 export type Props = {
 	baseUrl: string
 	user?: TokenSummary['grant']['props']
 }
 export class MCP extends McpAgent<Env, State, Props> {
+	private simulationControlsByOwner = new Map<
+		number,
+		Map<number, ApplianceSimulationControl>
+	>()
 	server = new McpServer(
 		{
 			name: 'MCP',
@@ -45,7 +57,7 @@ export class MCP extends McpAgent<Env, State, Props> {
 		},
 		{
 			instructions:
-				'Use this server to manage appliance energy data for the authenticated user.',
+				'Use this server to manage appliance energy data and run per-appliance simulation knobs for the authenticated user.',
 		},
 	)
 	async init() {
@@ -71,6 +83,22 @@ export class MCP extends McpAgent<Env, State, Props> {
 
 	getDb() {
 		return createDb(this.env.APP_DB)
+	}
+
+	getSimulationControls(ownerId: number) {
+		const controls = this.simulationControlsByOwner.get(ownerId)
+		return controls ? new Map(controls) : new Map()
+	}
+
+	setSimulationControls(
+		ownerId: number,
+		controls: Map<number, ApplianceSimulationControl>,
+	) {
+		if (controls.size === 0) {
+			this.simulationControlsByOwner.delete(ownerId)
+			return
+		}
+		this.simulationControlsByOwner.set(ownerId, new Map(controls))
 	}
 
 	async requireOwnerId() {

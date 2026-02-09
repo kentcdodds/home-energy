@@ -490,6 +490,9 @@ test(
 		expect(toolNames).toContain('edit_appliances')
 		expect(toolNames).toContain('delete_appliances')
 		expect(toolNames).toContain('open_appliance_energy_app')
+		expect(toolNames).toContain('get_appliance_simulation_state')
+		expect(toolNames).toContain('set_appliance_simulation_controls')
+		expect(toolNames).toContain('reset_appliance_simulation_controls')
 	},
 	{ timeout: defaultTimeoutMs },
 )
@@ -517,6 +520,7 @@ test(
 			appliances: Array<{ id: number; name: string; watts: number }>
 			applianceCount: number
 			generatedAt: string
+			simulationToolNames: Array<string>
 		}
 
 		expect(appJson.ok).toBe(true)
@@ -524,6 +528,156 @@ test(
 		expect(appJson.appliances.length).toBe(1)
 		expect(appJson.appliances[0]?.name).toBe('Desk Fan')
 		expect(appJson.generatedAt).toBeDefined()
+		expect(appJson.simulationToolNames).toContain('get_appliance_simulation_state')
+		expect(appJson.simulationToolNames).toContain(
+			'set_appliance_simulation_controls',
+		)
+		expect(appJson.simulationToolNames).toContain(
+			'reset_appliance_simulation_controls',
+		)
+	},
+	{ timeout: defaultTimeoutMs },
+)
+
+test(
+	'mcp server simulates scenarios through app-linked tools',
+	async () => {
+		await using database = await createTestDatabase()
+		await using server = await startDevServer(database.persistDir)
+		await using mcpClient = await createMcpClient(server.origin, database.user)
+
+		await mcpClient.client.callTool({
+			name: 'add_appliances',
+			arguments: {
+				appliances: [
+					{ name: 'Toaster', watts: 800 },
+					{ name: 'Fan', watts: 120 },
+				],
+			},
+		})
+
+		const initialStateResult = (await mcpClient.client.callTool({
+			name: 'get_appliance_simulation_state',
+			arguments: {},
+		})) as CallToolResult
+		const initialState = getStructuredOutput(initialStateResult) as {
+			ok: boolean
+			appliances: Array<{
+				id: number
+				name: string
+				control: {
+					enabled: boolean
+					hoursPerDay: number
+					dutyCyclePercent: number
+					startHour: number
+					quantity: number
+					overrideWatts: number | null
+				}
+			}>
+			totals: { dailyKwh: number; averageWatts: number; peakWatts: number }
+		}
+		expect(initialState.ok).toBe(true)
+		expect(initialState.appliances).toHaveLength(2)
+		expect(initialState.totals.dailyKwh).toBeCloseTo(7.36, 6)
+		const fan = initialState.appliances.find((item) => item.name === 'Fan')
+		expect(fan).toBeDefined()
+
+		const setControlsResult = (await mcpClient.client.callTool({
+			name: 'set_appliance_simulation_controls',
+			arguments: {
+				updates: [
+					{
+						name: 'Toaster',
+						hoursPerDay: 1.5,
+						dutyCyclePercent: 50,
+						startHour: 7,
+						quantity: 2,
+					},
+					{ id: fan!.id, enabled: false },
+				],
+			},
+		})) as CallToolResult
+		const setControlsJson = getStructuredOutput(setControlsResult) as {
+			ok: boolean
+			appliedCount: number
+			missingTargets: Array<string>
+			totals: { dailyKwh: number; averageWatts: number; peakWatts: number }
+			appliances: Array<{
+				id: number
+				name: string
+				control: {
+					enabled: boolean
+					hoursPerDay: number
+					dutyCyclePercent: number
+					startHour: number
+					quantity: number
+				}
+			}>
+		}
+		expect(setControlsJson.ok).toBe(true)
+		expect(setControlsJson.appliedCount).toBe(2)
+		expect(setControlsJson.missingTargets).toHaveLength(0)
+		expect(setControlsJson.totals.dailyKwh).toBeCloseTo(1.2, 6)
+		expect(
+			setControlsJson.appliances.find((item) => item.name === 'Fan')?.control
+				.enabled,
+		).toBe(false)
+		expect(
+			setControlsJson.appliances.find((item) => item.name === 'Toaster')?.control
+				.quantity,
+		).toBe(2)
+
+		const resetOneResult = (await mcpClient.client.callTool({
+			name: 'reset_appliance_simulation_controls',
+			arguments: { ids: [fan!.id] },
+		})) as CallToolResult
+		const resetOneJson = getStructuredOutput(resetOneResult) as {
+			ok: boolean
+			resetCount: number
+			resetAll: boolean
+			appliances: Array<{
+				name: string
+				control: { enabled: boolean; hoursPerDay: number }
+			}>
+		}
+		expect(resetOneJson.ok).toBe(true)
+		expect(resetOneJson.resetCount).toBe(1)
+		expect(resetOneJson.resetAll).toBe(false)
+		expect(
+			resetOneJson.appliances.find((item) => item.name === 'Fan')?.control.enabled,
+		).toBe(true)
+
+		const resetAllResult = (await mcpClient.client.callTool({
+			name: 'reset_appliance_simulation_controls',
+			arguments: {},
+		})) as CallToolResult
+		const resetAllJson = getStructuredOutput(resetAllResult) as {
+			ok: boolean
+			resetAll: boolean
+			appliances: Array<{
+				name: string
+				control: {
+					enabled: boolean
+					hoursPerDay: number
+					dutyCyclePercent: number
+					startHour: number
+					quantity: number
+					overrideWatts: number | null
+				}
+			}>
+		}
+		expect(resetAllJson.ok).toBe(true)
+		expect(resetAllJson.resetAll).toBe(true)
+		expect(
+			resetAllJson.appliances.find((item) => item.name === 'Toaster')?.control,
+		).toEqual({
+			enabled: true,
+			hoursPerDay: 8,
+			dutyCyclePercent: 100,
+			startHour: 6,
+			quantity: 1,
+			overrideWatts: null,
+		})
 	},
 	{ timeout: defaultTimeoutMs },
 )

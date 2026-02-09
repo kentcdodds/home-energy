@@ -28,6 +28,10 @@ clients.
 - Shows a running total of watts across all appliances.
 - Supports deleting appliances to keep totals accurate.
 - Exposes MCP tools for list, add, edit, delete, and total-watts flows.
+- Exposes app-linked MCP simulation tools for reading and updating per-appliance
+  knobs (`get_appliance_simulation_state`,
+  `set_appliance_simulation_controls`, and
+  `reset_appliance_simulation_controls`).
 - Exposes an MCP App launch tool (`open_appliance_energy_app`) that opens an
   interactive appliance simulation UI in MCP Apps-compatible hosts.
 
@@ -39,8 +43,9 @@ clients.
 ## MCP App: Appliance Energy Simulator
 
 The MCP server now includes an app-launch tool that opens an interactive
-simulator UI with per-appliance knobs. The simulator uses client-side state only
-(no persistence) and calculates:
+simulator UI with per-appliance knobs. App-side interactions stay local to the
+UI session, and server simulation tools keep a session-scoped control state so
+models can iteratively adjust scenarios. Both flows calculate:
 
 - Per-appliance daily kWh
 - Total daily kWh
@@ -55,6 +60,10 @@ Per-appliance knobs:
 - start hour
 - quantity
 - optional override watts
+
+Models can now twist those knobs via server tools (not only inside the app
+runtime), which aligns with the Excalidraw MCP Apps pattern of exposing
+model-callable app tools on the server.
 
 ## Project Lineage
 

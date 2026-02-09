@@ -6,7 +6,7 @@ import {
 } from '@modelcontextprotocol/ext-apps/server'
 import { createApplianceStore } from '../worker/appliances.ts'
 import { applianceSummarySchema } from '../worker/model-schemas.ts'
-import { type MCP } from './index.ts'
+import { type ApplianceSimulationControl, type MCP } from './index.ts'
 
 type ApplianceSummary = z.infer<typeof applianceSummarySchema>
 type ApplianceAppSeed = Pick<
@@ -18,6 +18,7 @@ type OpenApplianceEnergyAppPayload = {
 	appliances: Array<ApplianceAppSeed>
 	applianceCount: number
 	generatedAt: string
+	simulationToolNames: Array<string>
 }
 
 type ApplianceInput = {
@@ -35,6 +36,60 @@ type ApplianceEditInput = {
 	amps?: number
 	volts?: number
 	notes?: string | null
+}
+
+type ApplianceControlUpdateInput = {
+	id?: number
+	name?: string
+	enabled?: boolean
+	hoursPerDay?: number
+	dutyCyclePercent?: number
+	startHour?: number
+	quantity?: number
+	overrideWatts?: number | null
+}
+
+type ApplianceWithControl = ApplianceSummary & {
+	control: ApplianceSimulationControl
+}
+
+type ApplianceDerived = {
+	effectiveWatts: number
+	dailyKwh: number
+	averageWatts: number
+	hourlyLoadWatts: Array<number>
+}
+
+type ApplianceWithDerived = ApplianceWithControl & {
+	derived: ApplianceDerived
+}
+
+type SimulationTotals = {
+	dailyKwh: number
+	averageWatts: number
+	peakWatts: number
+}
+
+type SimulationSnapshot = {
+	appliances: Array<ApplianceWithDerived>
+	totals: SimulationTotals
+	hourlyLoadWatts: Array<number>
+}
+
+type SimulationToolPayload = {
+	ok: true
+	appliances: Array<{
+		id: number
+		name: string
+		baseWatts: number
+		notes: string | null
+		control: ApplianceSimulationControl
+		derived: Omit<ApplianceDerived, 'hourlyLoadWatts'>
+	}>
+	totals: SimulationTotals
+	hourlyLoadWatts: Array<number>
+	applianceCount: number
+	updatedAt: string
 }
 
 const applianceInputSchema = z
@@ -86,6 +141,40 @@ const applianceEditSchema = z
 					message: 'Provide watts or amps and volts.',
 				})
 			}
+		}
+	})
+
+const applianceControlUpdateSchema = z
+	.object({
+		id: z.number().int().positive().optional(),
+		name: z.string().min(1, 'Name is required.').optional(),
+		enabled: z.boolean().optional(),
+		hoursPerDay: z.number().min(0).max(24).optional(),
+		dutyCyclePercent: z.number().min(0).max(100).optional(),
+		startHour: z.number().min(0).max(23).optional(),
+		quantity: z.number().int().min(1).max(100).optional(),
+		overrideWatts: z.number().positive().max(100_000).nullable().optional(),
+	})
+	.superRefine((data, context) => {
+		const hasTarget = data.id != null || data.name != null
+		if (!hasTarget) {
+			context.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'Provide appliance id or appliance name to update.',
+			})
+		}
+		const hasControlUpdate =
+			data.enabled != null ||
+			data.hoursPerDay != null ||
+			data.dutyCyclePercent != null ||
+			data.startHour != null ||
+			data.quantity != null ||
+			data.overrideWatts !== undefined
+		if (!hasControlUpdate) {
+			context.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'Provide at least one control field to update.',
+			})
 		}
 	})
 
@@ -152,6 +241,271 @@ function resolveOptionalNotes(input: ApplianceEditInput) {
 
 function createStore(agent: MCP) {
 	return createApplianceStore(agent.getDb())
+}
+
+function formatKwh(value: number) {
+	return `${value.toFixed(2)}kWh`
+}
+
+function clampNumber(value: number, min: number, max: number) {
+	return Math.min(Math.max(value, min), max)
+}
+
+function createDefaultControl(): ApplianceSimulationControl {
+	return {
+		enabled: true,
+		hoursPerDay: 8,
+		dutyCyclePercent: 100,
+		startHour: 6,
+		quantity: 1,
+		overrideWatts: null,
+	}
+}
+
+function normalizeControl(
+	control: ApplianceSimulationControl,
+): ApplianceSimulationControl {
+	return {
+		enabled: control.enabled,
+		hoursPerDay: clampNumber(control.hoursPerDay, 0, 24),
+		dutyCyclePercent: clampNumber(control.dutyCyclePercent, 0, 100),
+		startHour: clampNumber(Math.round(control.startHour), 0, 23),
+		quantity: clampNumber(Math.round(control.quantity), 1, 100),
+		overrideWatts:
+			control.overrideWatts == null
+				? null
+				: clampNumber(control.overrideWatts, 1, 100_000),
+	}
+}
+
+function getEffectiveWatts(appliance: ApplianceWithControl) {
+	return appliance.control.overrideWatts ?? appliance.watts
+}
+
+function getOverlap(
+	intervalStart: number,
+	intervalEnd: number,
+	windowStart: number,
+	windowEnd: number,
+) {
+	const start = Math.max(intervalStart, windowStart)
+	const end = Math.min(intervalEnd, windowEnd)
+	return Math.max(0, end - start)
+}
+
+function calculateHourlyLoad(
+	control: ApplianceSimulationControl,
+	effectiveWatts: number,
+) {
+	const hourly = Array.from({ length: 24 }, () => 0)
+	if (!control.enabled) return hourly
+	if (effectiveWatts <= 0) return hourly
+
+	const runHours = clampNumber(control.hoursPerDay, 0, 24)
+	if (runHours <= 0) return hourly
+
+	const dutyMultiplier = clampNumber(control.dutyCyclePercent, 0, 100) / 100
+	if (dutyMultiplier <= 0) return hourly
+
+	const quantity = clampNumber(control.quantity, 1, 100)
+	const watts = effectiveWatts * quantity * dutyMultiplier
+	const startHour = clampNumber(control.startHour, 0, 23)
+	const endHour = startHour + runHours
+
+	for (let hour = 0; hour < 24; hour++) {
+		const intervalStart = hour
+		const intervalEnd = hour + 1
+		const sameDayOverlap = getOverlap(
+			intervalStart,
+			intervalEnd,
+			startHour,
+			Math.min(endHour, 24),
+		)
+		const wrappedOverlap =
+			endHour > 24 ? getOverlap(intervalStart, intervalEnd, 0, endHour - 24) : 0
+		const overlap = sameDayOverlap + wrappedOverlap
+		hourly[hour] = watts * overlap
+	}
+
+	return hourly
+}
+
+function calculateApplianceDerived(
+	appliance: ApplianceWithControl,
+): ApplianceWithDerived {
+	const effectiveWatts = getEffectiveWatts(appliance)
+	const hourlyLoadWatts = calculateHourlyLoad(appliance.control, effectiveWatts)
+	const totalWattHours = hourlyLoadWatts.reduce((sum, value) => sum + value, 0)
+	const dailyKwh = totalWattHours / 1000
+	const averageWatts = totalWattHours / 24
+	return {
+		...appliance,
+		derived: {
+			effectiveWatts,
+			dailyKwh,
+			averageWatts,
+			hourlyLoadWatts,
+		},
+	}
+}
+
+function calculateSimulation(
+	appliances: Array<ApplianceWithControl>,
+): SimulationSnapshot {
+	const appliancesWithDerived = appliances.map(calculateApplianceDerived)
+	const hourlyLoadWatts = Array.from({ length: 24 }, (_value, hour) =>
+		appliancesWithDerived.reduce(
+			(sum, appliance) => sum + (appliance.derived.hourlyLoadWatts[hour] ?? 0),
+			0,
+		),
+	)
+	const totalWattHours = hourlyLoadWatts.reduce((sum, value) => sum + value, 0)
+	const dailyKwh = totalWattHours / 1000
+	const averageWatts = totalWattHours / 24
+	const peakWatts = hourlyLoadWatts.reduce(
+		(maxValue, value) => Math.max(maxValue, value),
+		0,
+	)
+	return {
+		appliances: appliancesWithDerived,
+		totals: { dailyKwh, averageWatts, peakWatts },
+		hourlyLoadWatts,
+	}
+}
+
+function toSimulationToolPayload(
+	snapshot: SimulationSnapshot,
+): SimulationToolPayload {
+	return {
+		ok: true,
+		appliances: snapshot.appliances.map((appliance) => ({
+			id: appliance.id,
+			name: appliance.name,
+			baseWatts: appliance.watts,
+			notes: appliance.notes,
+			control: appliance.control,
+			derived: {
+				effectiveWatts: appliance.derived.effectiveWatts,
+				dailyKwh: appliance.derived.dailyKwh,
+				averageWatts: appliance.derived.averageWatts,
+			},
+		})),
+		totals: snapshot.totals,
+		hourlyLoadWatts: snapshot.hourlyLoadWatts,
+		applianceCount: snapshot.appliances.length,
+		updatedAt: new Date().toISOString(),
+	}
+}
+
+function syncStoredSimulationControls(
+	agent: MCP,
+	ownerId: number,
+	appliances: Array<ApplianceSummary>,
+) {
+	const controls = agent.getSimulationControls(ownerId)
+	const knownIds = new Set(appliances.map((item) => item.id))
+	let removedCount = 0
+	for (const id of controls.keys()) {
+		if (knownIds.has(id)) continue
+		controls.delete(id)
+		removedCount += 1
+	}
+	if (removedCount > 0) {
+		agent.setSimulationControls(ownerId, controls)
+	}
+	return controls
+}
+
+function withSimulationControls(
+	appliances: Array<ApplianceSummary>,
+	controls: Map<number, ApplianceSimulationControl>,
+): Array<ApplianceWithControl> {
+	return appliances.map((appliance) => ({
+		...appliance,
+		control: normalizeControl(controls.get(appliance.id) ?? createDefaultControl()),
+	}))
+}
+
+function persistSimulationControls(
+	agent: MCP,
+	ownerId: number,
+	appliances: Array<ApplianceWithControl>,
+) {
+	const controls = new Map<number, ApplianceSimulationControl>()
+	for (const appliance of appliances) {
+		controls.set(appliance.id, appliance.control)
+	}
+	agent.setSimulationControls(ownerId, controls)
+}
+
+function findApplianceIndexForUpdate(
+	appliances: Array<ApplianceWithControl>,
+	update: ApplianceControlUpdateInput,
+) {
+	if (typeof update.id === 'number') {
+		return appliances.findIndex((item) => item.id === update.id)
+	}
+	const normalizedName = update.name?.trim().toLowerCase()
+	if (!normalizedName) return -1
+	return appliances.findIndex(
+		(item) => item.name.trim().toLowerCase() === normalizedName,
+	)
+}
+
+function applySimulationControlUpdates(
+	appliances: Array<ApplianceWithControl>,
+	updates: Array<ApplianceControlUpdateInput>,
+) {
+	const nextAppliances = [...appliances]
+	const missingTargets: Array<string> = []
+	let appliedCount = 0
+	for (const update of updates) {
+		const index = findApplianceIndexForUpdate(nextAppliances, update)
+		if (index < 0) {
+			const missingLabel =
+				update.id != null
+					? `id:${update.id}`
+					: update.name != null
+						? `name:${update.name}`
+						: 'unknown'
+			missingTargets.push(missingLabel)
+			continue
+		}
+		const current = nextAppliances[index]
+		if (!current) continue
+		const nextControl = normalizeControl({
+			enabled:
+				update.enabled == null ? current.control.enabled : update.enabled,
+			hoursPerDay:
+				update.hoursPerDay == null
+					? current.control.hoursPerDay
+					: update.hoursPerDay,
+			dutyCyclePercent:
+				update.dutyCyclePercent == null
+					? current.control.dutyCyclePercent
+					: update.dutyCyclePercent,
+			startHour:
+				update.startHour == null ? current.control.startHour : update.startHour,
+			quantity: update.quantity == null ? current.control.quantity : update.quantity,
+			overrideWatts:
+				update.overrideWatts === undefined
+					? current.control.overrideWatts
+					: update.overrideWatts,
+		})
+		nextAppliances[index] = { ...current, control: nextControl }
+		appliedCount += 1
+	}
+	return { nextAppliances, appliedCount, missingTargets }
+}
+
+async function getSimulationSnapshot(agent: MCP, ownerId: number) {
+	const store = createStore(agent)
+	const list = await store.listByOwner(ownerId)
+	const summary = summarizeAppliances(list.map(toSummary))
+	const controls = syncStoredSimulationControls(agent, ownerId, summary.appliances)
+	const appliancesWithControl = withSimulationControls(summary.appliances, controls)
+	const snapshot = calculateSimulation(appliancesWithControl)
+	return { appliancesWithControl, snapshot }
 }
 
 function createApplianceAppHtml(origin: string, assetVersion: string) {
@@ -420,6 +774,128 @@ export async function registerTools(agent: MCP) {
 	)
 
 	const applianceAppResourceUri = 'ui://home-energy/appliance-simulator'
+	const simulationToolNames = [
+		'get_appliance_simulation_state',
+		'set_appliance_simulation_controls',
+		'reset_appliance_simulation_controls',
+	] as const
+
+	registerAppTool(
+		agent.server,
+		'get_appliance_simulation_state',
+		{
+			title: 'Get Appliance Simulation State',
+			description:
+				'Get appliance knob values, derived totals, and the 24-hour load profile.',
+			inputSchema: {},
+			annotations: { readOnlyHint: true },
+			_meta: { ui: { resourceUri: applianceAppResourceUri } },
+		},
+		async () => {
+			const ownerId = await agent.requireOwnerId()
+			const { snapshot } = await getSimulationSnapshot(agent, ownerId)
+			const payload = toSimulationToolPayload(snapshot)
+			return {
+				content: [
+					{
+						type: 'text',
+						text: `Current daily load is ${formatKwh(payload.totals.dailyKwh)} with peak ${formatWatts(payload.totals.peakWatts)}.`,
+					},
+					{ type: 'text', text: JSON.stringify(payload) },
+				],
+				structuredContent: payload,
+			}
+		},
+	)
+
+	registerAppTool(
+		agent.server,
+		'set_appliance_simulation_controls',
+		{
+			title: 'Set Appliance Simulation Controls',
+			description:
+				'Update simulation knobs by appliance id or name and return recalculated totals.',
+			inputSchema: {
+				updates: z.array(applianceControlUpdateSchema).min(1),
+			},
+			annotations: { idempotentHint: true },
+			_meta: { ui: { resourceUri: applianceAppResourceUri } },
+		},
+		async ({ updates }: { updates: Array<ApplianceControlUpdateInput> }) => {
+			const ownerId = await agent.requireOwnerId()
+			const { appliancesWithControl } = await getSimulationSnapshot(agent, ownerId)
+			const { nextAppliances, appliedCount, missingTargets } =
+				applySimulationControlUpdates(appliancesWithControl, updates)
+			persistSimulationControls(agent, ownerId, nextAppliances)
+			const snapshot = calculateSimulation(nextAppliances)
+			const payload = {
+				...toSimulationToolPayload(snapshot),
+				appliedCount,
+				missingTargets,
+			}
+			const missingText =
+				missingTargets.length > 0
+					? ` Missing targets: ${missingTargets.join(', ')}.`
+					: ''
+			return {
+				content: [
+					{
+						type: 'text',
+						text: `Applied ${appliedCount} simulation update(s).${missingText} Daily load is ${formatKwh(payload.totals.dailyKwh)}.`,
+					},
+					{ type: 'text', text: JSON.stringify(payload) },
+				],
+				structuredContent: payload,
+			}
+		},
+	)
+
+	registerAppTool(
+		agent.server,
+		'reset_appliance_simulation_controls',
+		{
+			title: 'Reset Appliance Simulation Controls',
+			description:
+				'Reset simulation knobs for selected appliance ids, or all appliances when ids is omitted.',
+			inputSchema: {
+				ids: z.array(z.number().int().positive()).optional(),
+			},
+			annotations: { idempotentHint: true },
+			_meta: { ui: { resourceUri: applianceAppResourceUri } },
+		},
+		async ({ ids }: { ids?: Array<number> }) => {
+			const ownerId = await agent.requireOwnerId()
+			const controls = agent.getSimulationControls(ownerId)
+			let resetCount = 0
+			if (ids == null) {
+				resetCount = controls.size
+				controls.clear()
+			} else {
+				for (const id of ids) {
+					if (controls.delete(id)) {
+						resetCount += 1
+					}
+				}
+			}
+			agent.setSimulationControls(ownerId, controls)
+			const { snapshot } = await getSimulationSnapshot(agent, ownerId)
+			const payload = {
+				...toSimulationToolPayload(snapshot),
+				resetCount,
+				resetAll: ids == null,
+			}
+			return {
+				content: [
+					{
+						type: 'text',
+						text: `Reset controls for ${resetCount} appliance(s). Daily load is ${formatKwh(payload.totals.dailyKwh)}.`,
+					},
+					{ type: 'text', text: JSON.stringify(payload) },
+				],
+				structuredContent: payload,
+			}
+		},
+	)
 
 	registerAppTool(
 		agent.server,
@@ -427,7 +903,7 @@ export async function registerTools(agent: MCP) {
 		{
 			title: 'Open Appliance Energy App',
 			description:
-				'Open the interactive appliance energy app with local per-appliance controls and load chart.',
+				'Open the interactive appliance energy app and use simulation tools to twist per-appliance knobs.',
 			inputSchema: {},
 			annotations: { readOnlyHint: true },
 			_meta: { ui: { resourceUri: applianceAppResourceUri } },
@@ -442,6 +918,7 @@ export async function registerTools(agent: MCP) {
 				appliances: summary.appliances.map(toApplianceAppSeed),
 				applianceCount: summary.appliances.length,
 				generatedAt: new Date().toISOString(),
+				simulationToolNames: [...simulationToolNames],
 			}
 			return {
 				content: [
