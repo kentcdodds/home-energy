@@ -7,6 +7,8 @@ const routes = route({
 	login: '/login',
 	signup: '/signup',
 	logout: post('/logout'),
+	passwordResetRequest: post('/password-reset'),
+	passwordResetConfirm: post('/password-reset/confirm'),
 	session: '/session',
 	auth: post('/auth'),
 	appliances: form('appliances'),

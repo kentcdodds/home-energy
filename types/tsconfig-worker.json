@@ -5,6 +5,17 @@
 		"tsBuildInfoFile": "../node_modules/.tmp/tsconfig.worker.tsbuildinfo",
 		"target": "ES2023",
 		"lib": ["ES2023", "WebWorker", "WebWorker.Iterable"],
+		"baseUrl": ".",
+		// Force MCP SDK to resolve to the hoisted install to avoid duplicate
+		// private type conflicts when multiple copies are present.
+		"paths": {
+			"@modelcontextprotocol/sdk": [
+				"../node_modules/@modelcontextprotocol/sdk"
+			],
+			"@modelcontextprotocol/sdk/*": [
+				"../node_modules/@modelcontextprotocol/sdk/*"
+			]
+		},
 		"module": "ESNext",
 		"types": [],
 		"moduleResolution": "bundler",
@@ -22,7 +33,13 @@
 		"../mcp/**/*.ts",
 		"../types/env.d.ts",
 		"../types/env-schema.ts",
-		"../types/worker-configuration.d.ts"
+		"../types/worker-configuration.d.ts",
+		"../shared/**/*.ts"
 	],
-	"exclude": ["**/*.test.ts", "**/*.spec.ts"]
+	"exclude": [
+		"**/*.test.ts",
+		"**/*.spec.ts",
+		"../**/*.test.ts",
+		"../**/*.spec.ts"
+	]
 }
