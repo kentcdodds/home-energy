@@ -170,9 +170,9 @@ function createApplianceAppHtml(baseUrl: string) {
 				padding: 0;
 			}
 			body {
-				font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-				background: #ffffff;
-				color: #1f2937;
+				font-family: var(--font-family), system-ui, sans-serif;
+				background: var(--color-background);
+				color: var(--color-text);
 			}
 		</style>
 	</head>

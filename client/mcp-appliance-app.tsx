@@ -5,6 +5,7 @@ import {
 	type Tool,
 } from '@modelcontextprotocol/sdk/types.js'
 import { type Handle } from 'remix/component'
+import { colors, radius, spacing, typography } from './styles/tokens.ts'
 
 type ConnectionStatus = 'connecting' | 'connected' | 'error'
 
@@ -629,10 +630,11 @@ export function McpApplianceApp(handle: Handle) {
 					boxSizing: 'border-box',
 					display: 'grid',
 					gridTemplateRows: 'auto auto 1fr',
-					gap: '1rem',
-					padding: '1rem',
-					background: '#ffffff',
-					color: '#111827',
+					gap: spacing.md,
+					padding: spacing.md,
+					background: colors.background,
+					color: colors.text,
+					fontFamily: typography.fontFamily,
 				}}
 			>
 				<header
@@ -640,28 +642,34 @@ export function McpApplianceApp(handle: Handle) {
 						display: 'flex',
 						justifyContent: 'space-between',
 						alignItems: 'center',
-						gap: '1rem',
+						gap: spacing.md,
 						flexWrap: 'wrap',
 					}}
 				>
-					<div style={{ display: 'grid', gap: '0.25rem' }}>
-						<h1 style={{ margin: 0, fontSize: '1.25rem' }}>
+					<div style={{ display: 'grid', gap: spacing.xs }}>
+						<h1
+							style={{
+								margin: 0,
+								fontSize: typography.fontSize.lg,
+								fontWeight: typography.fontWeight.semibold,
+							}}
+						>
 							Appliance Energy Simulator
 						</h1>
-						<p style={{ margin: 0, color: '#4b5563' }}>
+						<p style={{ margin: 0, color: colors.textMuted }}>
 							Local-only appliance knobs and load calculations.
 						</p>
 					</div>
 					<p
 						style={{
 							margin: 0,
-							fontWeight: 600,
+							fontWeight: typography.fontWeight.semibold,
 							color:
 								connectionStatus === 'error'
-									? '#b91c1c'
+									? colors.error
 									: connectionStatus === 'connected'
-										? '#047857'
-										: '#92400e',
+										? colors.primaryText
+										: colors.textMuted,
 						}}
 					>
 						{connectionStatus === 'connected'
@@ -676,48 +684,69 @@ export function McpApplianceApp(handle: Handle) {
 					style={{
 						display: 'grid',
 						gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-						gap: '0.75rem',
+						gap: spacing.sm,
 					}}
 				>
 					<article
 						style={{
-							border: '1px solid #e5e7eb',
-							borderRadius: '0.75rem',
-							padding: '0.75rem',
+							border: `1px solid ${colors.border}`,
+							borderRadius: radius.lg,
+							padding: spacing.sm,
 							display: 'grid',
-							gap: '0.25rem',
+							gap: spacing.xs,
+							background: colors.surface,
 						}}
 					>
-						<p style={{ margin: 0, color: '#6b7280' }}>Daily energy</p>
-						<p style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>
+						<p style={{ margin: 0, color: colors.textMuted }}>Daily energy</p>
+						<p
+							style={{
+								margin: 0,
+								fontSize: typography.fontSize.lg,
+								fontWeight: typography.fontWeight.semibold,
+							}}
+						>
 							{formatKwh(simulation.totals.dailyKwh)}
 						</p>
 					</article>
 					<article
 						style={{
-							border: '1px solid #e5e7eb',
-							borderRadius: '0.75rem',
-							padding: '0.75rem',
+							border: `1px solid ${colors.border}`,
+							borderRadius: radius.lg,
+							padding: spacing.sm,
 							display: 'grid',
-							gap: '0.25rem',
+							gap: spacing.xs,
+							background: colors.surface,
 						}}
 					>
-						<p style={{ margin: 0, color: '#6b7280' }}>Peak load</p>
-						<p style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>
+						<p style={{ margin: 0, color: colors.textMuted }}>Peak load</p>
+						<p
+							style={{
+								margin: 0,
+								fontSize: typography.fontSize.lg,
+								fontWeight: typography.fontWeight.semibold,
+							}}
+						>
 							{formatWatts(simulation.totals.peakWatts)}
 						</p>
 					</article>
 					<article
 						style={{
-							border: '1px solid #e5e7eb',
-							borderRadius: '0.75rem',
-							padding: '0.75rem',
+							border: `1px solid ${colors.border}`,
+							borderRadius: radius.lg,
+							padding: spacing.sm,
 							display: 'grid',
-							gap: '0.25rem',
+							gap: spacing.xs,
+							background: colors.surface,
 						}}
 					>
-						<p style={{ margin: 0, color: '#6b7280' }}>Average load</p>
-						<p style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>
+						<p style={{ margin: 0, color: colors.textMuted }}>Average load</p>
+						<p
+							style={{
+								margin: 0,
+								fontSize: typography.fontSize.lg,
+								fontWeight: typography.fontWeight.semibold,
+							}}
+						>
 							{formatWatts(simulation.totals.averageWatts)}
 						</p>
 					</article>
@@ -727,23 +756,26 @@ export function McpApplianceApp(handle: Handle) {
 					style={{
 						display: 'grid',
 						gridTemplateColumns: 'minmax(0, 18rem) minmax(0, 1fr)',
-						gap: '1rem',
+						gap: spacing.md,
 						minHeight: 0,
 					}}
 				>
 					<aside
 						style={{
-							border: '1px solid #e5e7eb',
-							borderRadius: '0.75rem',
-							padding: '0.75rem',
+							border: `1px solid ${colors.border}`,
+							borderRadius: radius.lg,
+							padding: spacing.sm,
 							display: 'grid',
-							gap: '0.75rem',
+							gap: spacing.sm,
 							alignContent: 'start',
 							overflow: 'auto',
+							background: colors.surface,
 						}}
 					>
-						<label style={{ display: 'grid', gap: '0.35rem' }}>
-							<span style={{ fontWeight: 600 }}>Select appliance</span>
+						<label style={{ display: 'grid', gap: spacing.xs }}>
+							<span style={{ fontWeight: typography.fontWeight.semibold }}>
+								Select appliance
+							</span>
 							<select
 								value={selectedApplianceId ?? ''}
 								on={{
@@ -757,10 +789,12 @@ export function McpApplianceApp(handle: Handle) {
 									},
 								}}
 								style={{
-									padding: '0.5rem',
-									borderRadius: '0.5rem',
-									border: '1px solid #d1d5db',
-									background: '#fff',
+									padding: spacing.sm,
+									borderRadius: radius.md,
+									border: `1px solid ${colors.border}`,
+									background: colors.background,
+									color: colors.text,
+									fontFamily: typography.fontFamily,
 								}}
 							>
 								<option value="">Select…</option>
@@ -777,7 +811,7 @@ export function McpApplianceApp(handle: Handle) {
 								margin: 0,
 								paddingLeft: '1.1rem',
 								display: 'grid',
-								gap: '0.35rem',
+								gap: spacing.xs,
 							}}
 						>
 							{simulation.appliances.map((appliance) => (
@@ -791,36 +825,39 @@ export function McpApplianceApp(handle: Handle) {
 
 					<div
 						style={{
-							border: '1px solid #e5e7eb',
-							borderRadius: '0.75rem',
-							padding: '0.75rem',
+							border: `1px solid ${colors.border}`,
+							borderRadius: radius.lg,
+							padding: spacing.sm,
 							display: 'grid',
-							gap: '0.75rem',
+							gap: spacing.sm,
 							alignContent: 'start',
 							overflow: 'auto',
+							background: colors.surface,
 						}}
 					>
 						{connectionMessage ? (
-							<p style={{ margin: 0, color: '#6b7280' }}>{connectionMessage}</p>
+							<p style={{ margin: 0, color: colors.textMuted }}>
+								{connectionMessage}
+							</p>
 						) : null}
 						{loadError ? (
-							<p style={{ margin: 0, color: '#b91c1c' }} role="alert">
+							<p style={{ margin: 0, color: colors.error }} role="alert">
 								{loadError}
 							</p>
 						) : null}
 
 						{selected ? (
-							<section style={{ display: 'grid', gap: '0.75rem' }}>
-								<header style={{ display: 'grid', gap: '0.35rem' }}>
-									<h2 style={{ margin: 0, fontSize: '1rem' }}>
+							<section style={{ display: 'grid', gap: spacing.sm }}>
+								<header style={{ display: 'grid', gap: spacing.xs }}>
+									<h2 style={{ margin: 0, fontSize: typography.fontSize.base }}>
 										{selected.name}
 									</h2>
-									<p style={{ margin: 0, color: '#6b7280' }}>
+									<p style={{ margin: 0, color: colors.textMuted }}>
 										Base: {formatWatts(selected.watts)} · Effective:{' '}
 										{formatWatts(selected.derived.effectiveWatts)}
 									</p>
 									{selected.notes ? (
-										<p style={{ margin: 0, color: '#6b7280' }}>
+										<p style={{ margin: 0, color: colors.textMuted }}>
 											{selected.notes}
 										</p>
 									) : null}
@@ -830,7 +867,7 @@ export function McpApplianceApp(handle: Handle) {
 									style={{
 										display: 'flex',
 										alignItems: 'center',
-										gap: '0.5rem',
+										gap: spacing.sm,
 									}}
 								>
 									<input
@@ -850,7 +887,7 @@ export function McpApplianceApp(handle: Handle) {
 									<span>Enabled</span>
 								</label>
 
-								<label style={{ display: 'grid', gap: '0.35rem' }}>
+								<label style={{ display: 'grid', gap: spacing.xs }}>
 									<span>Hours per day</span>
 									<input
 										type="number"
@@ -868,14 +905,17 @@ export function McpApplianceApp(handle: Handle) {
 											},
 										}}
 										style={{
-											padding: '0.5rem',
-											borderRadius: '0.5rem',
-											border: '1px solid #d1d5db',
+											padding: spacing.sm,
+											borderRadius: radius.md,
+											border: `1px solid ${colors.border}`,
+											background: colors.background,
+											color: colors.text,
+											fontFamily: typography.fontFamily,
 										}}
 									/>
 								</label>
 
-								<label style={{ display: 'grid', gap: '0.35rem' }}>
+								<label style={{ display: 'grid', gap: spacing.xs }}>
 									<span>Duty cycle (%)</span>
 									<input
 										type="number"
@@ -893,14 +933,17 @@ export function McpApplianceApp(handle: Handle) {
 											},
 										}}
 										style={{
-											padding: '0.5rem',
-											borderRadius: '0.5rem',
-											border: '1px solid #d1d5db',
+											padding: spacing.sm,
+											borderRadius: radius.md,
+											border: `1px solid ${colors.border}`,
+											background: colors.background,
+											color: colors.text,
+											fontFamily: typography.fontFamily,
 										}}
 									/>
 								</label>
 
-								<label style={{ display: 'grid', gap: '0.35rem' }}>
+								<label style={{ display: 'grid', gap: spacing.xs }}>
 									<span>Start hour (0–23)</span>
 									<input
 										type="number"
@@ -918,14 +961,17 @@ export function McpApplianceApp(handle: Handle) {
 											},
 										}}
 										style={{
-											padding: '0.5rem',
-											borderRadius: '0.5rem',
-											border: '1px solid #d1d5db',
+											padding: spacing.sm,
+											borderRadius: radius.md,
+											border: `1px solid ${colors.border}`,
+											background: colors.background,
+											color: colors.text,
+											fontFamily: typography.fontFamily,
 										}}
 									/>
 								</label>
 
-								<label style={{ display: 'grid', gap: '0.35rem' }}>
+								<label style={{ display: 'grid', gap: spacing.xs }}>
 									<span>Quantity</span>
 									<input
 										type="number"
@@ -943,14 +989,17 @@ export function McpApplianceApp(handle: Handle) {
 											},
 										}}
 										style={{
-											padding: '0.5rem',
-											borderRadius: '0.5rem',
-											border: '1px solid #d1d5db',
+											padding: spacing.sm,
+											borderRadius: radius.md,
+											border: `1px solid ${colors.border}`,
+											background: colors.background,
+											color: colors.text,
+											fontFamily: typography.fontFamily,
 										}}
 									/>
 								</label>
 
-								<label style={{ display: 'grid', gap: '0.35rem' }}>
+								<label style={{ display: 'grid', gap: spacing.xs }}>
 									<span>Override watts (optional)</span>
 									<input
 										type="number"
@@ -973,9 +1022,12 @@ export function McpApplianceApp(handle: Handle) {
 											},
 										}}
 										style={{
-											padding: '0.5rem',
-											borderRadius: '0.5rem',
-											border: '1px solid #d1d5db',
+											padding: spacing.sm,
+											borderRadius: radius.md,
+											border: `1px solid ${colors.border}`,
+											background: colors.background,
+											color: colors.text,
+											fontFamily: typography.fontFamily,
 										}}
 									/>
 								</label>
@@ -986,12 +1038,12 @@ export function McpApplianceApp(handle: Handle) {
 								</p>
 							</section>
 						) : (
-							<p style={{ margin: 0, color: '#6b7280' }}>
+							<p style={{ margin: 0, color: colors.textMuted }}>
 								Select an appliance to adjust knobs.
 							</p>
 						)}
 
-						<section style={{ display: 'grid', gap: '0.5rem' }}>
+						<section style={{ display: 'grid', gap: spacing.sm }}>
 							<h3 style={{ margin: 0, fontSize: '0.95rem' }}>
 								Hourly load profile
 							</h3>
@@ -1002,10 +1054,10 @@ export function McpApplianceApp(handle: Handle) {
 									alignItems: 'end',
 									gap: '0.2rem',
 									height: '7.5rem',
-									border: '1px solid #e5e7eb',
-									borderRadius: '0.5rem',
+									border: `1px solid ${colors.border}`,
+									borderRadius: radius.md,
 									padding: '0.4rem',
-									background: '#f9fafb',
+									background: colors.background,
 								}}
 							>
 								{simulation.hourlyLoadWatts.map((value, hour) => {
@@ -1017,7 +1069,7 @@ export function McpApplianceApp(handle: Handle) {
 											style={{
 												height: `${Math.max(6, ratio * 100)}%`,
 												borderRadius: '0.2rem',
-												background: '#2563eb',
+												background: colors.primary,
 											}}
 										/>
 									)
@@ -1028,7 +1080,7 @@ export function McpApplianceApp(handle: Handle) {
 									display: 'grid',
 									gridTemplateColumns: 'repeat(12, minmax(0, 1fr))',
 									fontSize: '0.75rem',
-									color: '#6b7280',
+									color: colors.textMuted,
 								}}
 							>
 								{Array.from({ length: 12 }, (_value, index) => (
