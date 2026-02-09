@@ -1,9 +1,24 @@
 import { z } from 'zod'
+import {
+	registerAppResource,
+	registerAppTool,
+	RESOURCE_MIME_TYPE,
+} from '@modelcontextprotocol/ext-apps/server'
 import { createApplianceStore } from '../worker/appliances.ts'
 import { applianceSummarySchema } from '../worker/model-schemas.ts'
 import { type MCP } from './index.ts'
 
 type ApplianceSummary = z.infer<typeof applianceSummarySchema>
+type ApplianceAppSeed = Pick<
+	ApplianceSummary,
+	'id' | 'name' | 'watts' | 'notes'
+>
+type OpenApplianceEnergyAppPayload = {
+	ok: true
+	appliances: Array<ApplianceAppSeed>
+	applianceCount: number
+	generatedAt: string
+}
 
 type ApplianceInput = {
 	name: string
@@ -137,6 +152,44 @@ function resolveOptionalNotes(input: ApplianceEditInput) {
 
 function createStore(agent: MCP) {
 	return createApplianceStore(agent.getDb())
+}
+
+function createApplianceAppHtml(baseUrl: string) {
+	const appScriptUrl = new URL('/mcp-appliance-app.js', baseUrl).toString()
+	return `<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Appliance Energy Simulator</title>
+		<style>
+			html, body, #root {
+				width: 100%;
+				height: 100%;
+				margin: 0;
+				padding: 0;
+			}
+			body {
+				font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+				background: #ffffff;
+				color: #1f2937;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="root"></div>
+		<script src="${appScriptUrl}"></script>
+	</body>
+</html>`
+}
+
+function toApplianceAppSeed(appliance: ApplianceSummary): ApplianceAppSeed {
+	return {
+		id: appliance.id,
+		name: appliance.name,
+		watts: appliance.watts,
+		notes: appliance.notes,
+	}
 }
 
 export async function registerTools(agent: MCP) {
@@ -340,6 +393,74 @@ export async function registerTools(agent: MCP) {
 					{ type: 'text', text: JSON.stringify(payload) },
 				],
 				structuredContent: payload,
+			}
+		},
+	)
+
+	const applianceAppResourceUri = 'ui://home-energy/appliance-simulator'
+
+	registerAppTool(
+		agent.server,
+		'open_appliance_energy_app',
+		{
+			title: 'Open Appliance Energy App',
+			description:
+				'Open the interactive appliance energy app with local per-appliance controls and load chart.',
+			inputSchema: {},
+			annotations: { readOnlyHint: true },
+			_meta: { ui: { resourceUri: applianceAppResourceUri } },
+		},
+		async () => {
+			const ownerId = await agent.requireOwnerId()
+			const store = createStore(agent)
+			const list = await store.listByOwner(ownerId)
+			const summary = summarizeAppliances(list.map(toSummary))
+			const payload: OpenApplianceEnergyAppPayload = {
+				ok: true,
+				appliances: summary.appliances.map(toApplianceAppSeed),
+				applianceCount: summary.appliances.length,
+				generatedAt: new Date().toISOString(),
+			}
+			return {
+				content: [
+					{
+						type: 'text',
+						text: `Opened appliance energy app with ${summary.appliances.length} appliance(s).`,
+					},
+					{ type: 'text', text: JSON.stringify(payload) },
+				],
+				structuredContent: payload,
+			}
+		},
+	)
+
+	registerAppResource(
+		agent.server,
+		'appliance_energy_app_ui',
+		applianceAppResourceUri,
+		{
+			mimeType: RESOURCE_MIME_TYPE,
+			description: 'Interactive appliance energy simulator app.',
+		},
+		async () => {
+			const baseUrl = agent.requireDomain()
+			const origin = new URL(baseUrl).origin
+			return {
+				contents: [
+					{
+						uri: applianceAppResourceUri,
+						mimeType: RESOURCE_MIME_TYPE,
+						text: createApplianceAppHtml(origin),
+						_meta: {
+							ui: {
+								csp: {
+									resourceDomains: [origin],
+								},
+								prefersBorder: true,
+							},
+						},
+					},
+				],
 			}
 		},
 	)

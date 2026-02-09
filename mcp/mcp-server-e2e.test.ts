@@ -489,6 +489,41 @@ test(
 		expect(toolNames).toContain('add_appliances')
 		expect(toolNames).toContain('edit_appliances')
 		expect(toolNames).toContain('delete_appliances')
+		expect(toolNames).toContain('open_appliance_energy_app')
+	},
+	{ timeout: defaultTimeoutMs },
+)
+
+test(
+	'mcp server returns appliance app launch payload',
+	async () => {
+		await using database = await createTestDatabase()
+		await using server = await startDevServer(database.persistDir)
+		await using mcpClient = await createMcpClient(server.origin, database.user)
+
+		await mcpClient.client.callTool({
+			name: 'add_appliances',
+			arguments: {
+				appliances: [{ name: 'Desk Fan', watts: 55 }],
+			},
+		})
+
+		const appResult = (await mcpClient.client.callTool({
+			name: 'open_appliance_energy_app',
+			arguments: {},
+		})) as CallToolResult
+		const appJson = getStructuredOutput(appResult) as {
+			ok: boolean
+			appliances: Array<{ id: number; name: string; watts: number }>
+			applianceCount: number
+			generatedAt: string
+		}
+
+		expect(appJson.ok).toBe(true)
+		expect(appJson.applianceCount).toBe(1)
+		expect(appJson.appliances.length).toBe(1)
+		expect(appJson.appliances[0]?.name).toBe('Desk Fan')
+		expect(appJson.generatedAt).toBeDefined()
 	},
 	{ timeout: defaultTimeoutMs },
 )
