@@ -85,6 +85,35 @@ type SimulationToolPayload = {
 	updatedAt: string
 }
 
+function toBridgeEventSummary(event: MessageEvent) {
+	const data =
+		event.data && typeof event.data === 'object'
+			? (event.data as Record<string, unknown>)
+			: null
+	const jsonrpc = typeof data?.jsonrpc === 'string' ? data.jsonrpc : null
+	const method = typeof data?.method === 'string' ? data.method : null
+	const hasId =
+		typeof data?.id === 'string' || typeof data?.id === 'number'
+	return [
+		`origin=${event.origin || 'unknown'}`,
+		`sourceIsParent=${event.source === window.parent ? 'yes' : 'no'}`,
+		`jsonrpc=${jsonrpc ?? 'none'}`,
+		`method=${method ?? 'none'}`,
+		`hasId=${hasId ? 'yes' : 'no'}`,
+	].join(' ')
+}
+
+function isBridgeDebugEnabled() {
+	return new URLSearchParams(window.location.search).get('bridgeDebug') === '1'
+}
+
+function bridgeDebugBreak(label: string, payload?: unknown) {
+	if (!isBridgeDebugEnabled()) return
+	console.log(`[bridge-debug] ${label}`, payload)
+	// Intentional breakpoint for handshake debugging in MCPJam iframe.
+	debugger
+}
+
 const appInfo = { name: 'Appliance Energy App', version: '1.0.0' }
 
 const appToolDefinitions: Array<Tool> = [
@@ -536,6 +565,20 @@ export function McpApplianceApp(handle: Handle) {
 	}
 
 	async function connect(signal: AbortSignal) {
+		const handshakeSamples: Array<string> = []
+		const onWindowMessage = (event: MessageEvent) => {
+			const summary = toBridgeEventSummary(event)
+			handshakeSamples.push(summary)
+			if (handshakeSamples.length > 8) handshakeSamples.shift()
+			if (event.source !== window.parent) {
+				bridgeDebugBreak('message-from-non-parent-source', {
+					summary,
+					origin: event.origin,
+				})
+			}
+		}
+		window.addEventListener('message', onWindowMessage)
+
 		try {
 			connectionStatus = 'connecting'
 			connectionMessage = 'Connecting to host…'
@@ -552,6 +595,7 @@ export function McpApplianceApp(handle: Handle) {
 			}
 
 			nextApp.onhostcontextchanged = (context) => {
+				bridgeDebugBreak('host-context-changed', context)
 				hostContext = { ...hostContext, ...context }
 				handle.update()
 			}
@@ -561,20 +605,56 @@ export function McpApplianceApp(handle: Handle) {
 			}))
 
 			nextApp.oncalltool = handleToolCall
+			bridgeDebugBreak('before-app-connect', {
+				parentEqualsTop: window.parent === window.top,
+				location: window.location.href,
+				hostContext,
+			})
+			const timeoutMs = 8000
+			let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+			try {
+				await Promise.race([
+					nextApp.connect(),
+					new Promise<never>((_, reject) => {
+						timeoutHandle = setTimeout(() => {
+							const sampleText =
+								handshakeSamples.length > 0
+									? handshakeSamples.join(' | ')
+									: 'no message events captured'
+							reject(
+								new Error(
+									`Host handshake timed out after ${timeoutMs}ms. Recent bridge events: ${sampleText}`,
+								),
+							)
+						}, timeoutMs)
+					}),
+				])
+			} finally {
+				if (timeoutHandle) clearTimeout(timeoutHandle)
+			}
 
-			await nextApp.connect()
-			if (signal.aborted) return
-
+			// connect() resolved successfully, so prefer connected state even if this
+			// task signal was aborted during intermediate updates.
 			hostContext = nextApp.getHostContext()
+			bridgeDebugBreak('connect-resolved', hostContext)
 			connectionStatus = 'connected'
 			connectionMessage = 'Connected.'
 			handle.update()
 		} catch (error) {
-			if (signal.aborted) return
+			bridgeDebugBreak('connect-catch', {
+				error: error instanceof Error ? error.message : String(error),
+				handshakeSamples,
+			})
 			connectionStatus = 'error'
 			connectionMessage = null
-			loadError = error instanceof Error ? error.message : 'Connection failed.'
+			const message =
+				error instanceof Error ? error.message : 'Connection failed.'
+			loadError = signal.aborted
+				? `${message} (task signal aborted during handshake)`
+				: message
 			handle.update()
+		} finally {
+			window.removeEventListener('message', onWindowMessage)
 		}
 	}
 

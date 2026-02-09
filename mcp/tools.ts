@@ -154,14 +154,19 @@ function createStore(agent: MCP) {
 	return createApplianceStore(agent.getDb())
 }
 
-function createApplianceAppHtml(baseUrl: string) {
-	const appScriptUrl = new URL('/mcp-appliance-app.js', baseUrl).toString()
+function createApplianceAppHtml(origin: string, assetVersion: string) {
+	const base = new URL(origin)
+	const appScriptUrl = new URL('/mcp-appliance-app.js', base)
+	const stylesUrl = new URL('/styles.css', base)
+	appScriptUrl.searchParams.set('v', assetVersion)
+	stylesUrl.searchParams.set('v', assetVersion)
 	return `<!doctype html>
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Appliance Energy Simulator</title>
+		<link rel="stylesheet" href="${stylesUrl.toString()}" />
 		<style>
 			html, body, #root {
 				width: 100%;
@@ -178,9 +183,26 @@ function createApplianceAppHtml(baseUrl: string) {
 	</head>
 	<body>
 		<div id="root"></div>
-		<script src="${appScriptUrl}"></script>
+		<script src="${appScriptUrl.toString()}"></script>
 	</body>
 </html>`
+}
+
+/**
+ * Domains to declare for MCPJam App Builder CSP (strict mode).
+ * Includes both localhost and 127.0.0.1 for the same port in local dev
+ * so script/style loads work regardless of which host the client used to connect.
+ */
+function getCspDomains(origin: string): string[] {
+	const url = new URL(origin)
+	const port = url.port || (url.protocol === 'https:' ? '443' : '80')
+	const origins = [origin]
+	if (url.hostname === 'localhost') {
+		origins.push(`http://127.0.0.1:${port}`)
+	} else if (url.hostname === '127.0.0.1') {
+		origins.push(`http://localhost:${port}`)
+	}
+	return [...new Set(origins)]
 }
 
 function toApplianceAppSeed(appliance: ApplianceSummary): ApplianceAppSeed {
@@ -445,16 +467,19 @@ export async function registerTools(agent: MCP) {
 		async () => {
 			const baseUrl = agent.requireDomain()
 			const origin = new URL(baseUrl).origin
+			const cspDomains = getCspDomains(origin)
+			const assetVersion = `${Date.now().toString(36)}-${crypto.randomUUID()}`
 			return {
 				contents: [
 					{
 						uri: applianceAppResourceUri,
 						mimeType: RESOURCE_MIME_TYPE,
-						text: createApplianceAppHtml(origin),
+						text: createApplianceAppHtml(origin, assetVersion),
 						_meta: {
 							ui: {
 								csp: {
-									resourceDomains: [origin],
+									resourceDomains: cspDomains,
+									connectDomains: cspDomains,
 								},
 								prefersBorder: true,
 							},
