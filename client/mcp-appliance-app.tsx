@@ -420,7 +420,7 @@ export function McpApplianceApp(handle: Handle) {
 	}
 
 	function resetControls(ids: Array<number> | null) {
-		if (!ids || ids.length === 0) {
+		if (ids === null) {
 			updateSimulation(
 				applianceRows.map((item) => ({
 					...item,
@@ -429,6 +429,9 @@ export function McpApplianceApp(handle: Handle) {
 			)
 			handle.update()
 			return applianceRows.length
+		}
+		if (ids.length === 0) {
+			return 0
 		}
 		const targetSet = new Set(ids)
 		let changedCount = 0
@@ -602,11 +605,16 @@ export function McpApplianceApp(handle: Handle) {
 	}
 
 	function getSafeAreaPadding() {
+		const safeAreaInsets = hostContext?.safeAreaInsets
+		const top = safeAreaInsets?.top ?? 0
+		const right = safeAreaInsets?.right ?? 0
+		const bottom = safeAreaInsets?.bottom ?? 0
+		const left = safeAreaInsets?.left ?? 0
 		return {
-			paddingTop: hostContext?.safeAreaInsets?.top ?? 0,
-			paddingRight: hostContext?.safeAreaInsets?.right ?? 0,
-			paddingBottom: hostContext?.safeAreaInsets?.bottom ?? 0,
-			paddingLeft: hostContext?.safeAreaInsets?.left ?? 0,
+			paddingTop: `calc(${spacing.md} + ${top}px)`,
+			paddingRight: `calc(${spacing.md} + ${right}px)`,
+			paddingBottom: `calc(${spacing.md} + ${bottom}px)`,
+			paddingLeft: `calc(${spacing.md} + ${left}px)`,
 		}
 	}
 
@@ -631,7 +639,6 @@ export function McpApplianceApp(handle: Handle) {
 					display: 'grid',
 					gridTemplateRows: 'auto auto 1fr',
 					gap: spacing.md,
-					padding: spacing.md,
 					background: colors.background,
 					color: colors.text,
 					fontFamily: typography.fontFamily,
