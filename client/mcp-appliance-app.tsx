@@ -569,9 +569,7 @@ export function McpApplianceApp(handle: Handle) {
 					new Promise<never>((_, reject) => {
 						timeoutHandle = setTimeout(() => {
 							reject(
-								new Error(
-									`Host handshake timed out after ${timeoutMs}ms.`,
-								),
+								new Error(`Host handshake timed out after ${timeoutMs}ms.`),
 							)
 						}, timeoutMs)
 					}),
