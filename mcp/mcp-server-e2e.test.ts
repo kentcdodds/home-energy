@@ -528,7 +528,9 @@ test(
 		expect(appJson.appliances.length).toBe(1)
 		expect(appJson.appliances[0]?.name).toBe('Desk Fan')
 		expect(appJson.generatedAt).toBeDefined()
-		expect(appJson.simulationToolNames).toContain('get_appliance_simulation_state')
+		expect(appJson.simulationToolNames).toContain(
+			'get_appliance_simulation_state',
+		)
 		expect(appJson.simulationToolNames).toContain(
 			'set_appliance_simulation_controls',
 		)
@@ -623,8 +625,8 @@ test(
 				.enabled,
 		).toBe(false)
 		expect(
-			setControlsJson.appliances.find((item) => item.name === 'Toaster')?.control
-				.quantity,
+			setControlsJson.appliances.find((item) => item.name === 'Toaster')
+				?.control.quantity,
 		).toBe(2)
 
 		const resetOneResult = (await mcpClient.client.callTool({
@@ -644,7 +646,8 @@ test(
 		expect(resetOneJson.resetCount).toBe(1)
 		expect(resetOneJson.resetAll).toBe(false)
 		expect(
-			resetOneJson.appliances.find((item) => item.name === 'Fan')?.control.enabled,
+			resetOneJson.appliances.find((item) => item.name === 'Fan')?.control
+				.enabled,
 		).toBe(true)
 
 		const resetAllResult = (await mcpClient.client.callTool({

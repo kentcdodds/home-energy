@@ -29,9 +29,8 @@ clients.
 - Supports deleting appliances to keep totals accurate.
 - Exposes MCP tools for list, add, edit, delete, and total-watts flows.
 - Exposes app-linked MCP simulation tools for reading and updating per-appliance
-  knobs (`get_appliance_simulation_state`,
-  `set_appliance_simulation_controls`, and
-  `reset_appliance_simulation_controls`).
+  knobs (`get_appliance_simulation_state`, `set_appliance_simulation_controls`,
+  and `reset_appliance_simulation_controls`).
 - Exposes an MCP App launch tool (`open_appliance_energy_app`) that opens an
   interactive appliance simulation UI in MCP Apps-compatible hosts.
 

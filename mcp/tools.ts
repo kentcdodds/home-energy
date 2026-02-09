@@ -422,7 +422,9 @@ function withSimulationControls(
 ): Array<ApplianceWithControl> {
 	return appliances.map((appliance) => ({
 		...appliance,
-		control: normalizeControl(controls.get(appliance.id) ?? createDefaultControl()),
+		control: normalizeControl(
+			controls.get(appliance.id) ?? createDefaultControl(),
+		),
 	}))
 }
 
@@ -486,7 +488,8 @@ function applySimulationControlUpdates(
 					: update.dutyCyclePercent,
 			startHour:
 				update.startHour == null ? current.control.startHour : update.startHour,
-			quantity: update.quantity == null ? current.control.quantity : update.quantity,
+			quantity:
+				update.quantity == null ? current.control.quantity : update.quantity,
 			overrideWatts:
 				update.overrideWatts === undefined
 					? current.control.overrideWatts
@@ -502,8 +505,15 @@ async function getSimulationSnapshot(agent: MCP, ownerId: number) {
 	const store = createStore(agent)
 	const list = await store.listByOwner(ownerId)
 	const summary = summarizeAppliances(list.map(toSummary))
-	const controls = syncStoredSimulationControls(agent, ownerId, summary.appliances)
-	const appliancesWithControl = withSimulationControls(summary.appliances, controls)
+	const controls = syncStoredSimulationControls(
+		agent,
+		ownerId,
+		summary.appliances,
+	)
+	const appliancesWithControl = withSimulationControls(
+		summary.appliances,
+		controls,
+	)
 	const snapshot = calculateSimulation(appliancesWithControl)
 	return { appliancesWithControl, snapshot }
 }
@@ -823,7 +833,10 @@ export async function registerTools(agent: MCP) {
 		},
 		async ({ updates }: { updates: Array<ApplianceControlUpdateInput> }) => {
 			const ownerId = await agent.requireOwnerId()
-			const { appliancesWithControl } = await getSimulationSnapshot(agent, ownerId)
+			const { appliancesWithControl } = await getSimulationSnapshot(
+				agent,
+				ownerId,
+			)
 			const { nextAppliances, appliedCount, missingTargets } =
 				applySimulationControlUpdates(appliancesWithControl, updates)
 			persistSimulationControls(agent, ownerId, nextAppliances)
