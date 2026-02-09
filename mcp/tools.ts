@@ -198,9 +198,9 @@ function getCspDomains(origin: string): string[] {
 	const port = url.port || (url.protocol === 'https:' ? '443' : '80')
 	const origins = [origin]
 	if (url.hostname === 'localhost') {
-		origins.push(`http://127.0.0.1:${port}`)
+		origins.push(`${url.protocol}//127.0.0.1:${port}`)
 	} else if (url.hostname === '127.0.0.1') {
-		origins.push(`http://localhost:${port}`)
+		origins.push(`${url.protocol}//localhost:${port}`)
 	}
 	return [...new Set(origins)]
 }
