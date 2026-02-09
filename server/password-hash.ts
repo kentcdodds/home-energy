@@ -3,7 +3,7 @@ import { toHex } from './hex.ts'
 const passwordHashPrefix = 'pbkdf2_sha256'
 const passwordSaltBytes = 16
 const passwordHashBytes = 32
-const passwordHashIterations = 120_000
+const passwordHashIterations = 100_000
 const legacyPasswordHashPattern = /^[0-9a-f]{64}$/i
 export const dummyPasswordHash = `${passwordHashPrefix}$${passwordHashIterations}$${toHex(
 	new Uint8Array(passwordSaltBytes),

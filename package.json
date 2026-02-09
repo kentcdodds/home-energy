@@ -21,7 +21,7 @@
     "format:check": "prettier --check .",
     "migrate:local": "bun ./wrangler-env.ts d1 migrations apply APP_DB --local",
     "preview": "bun run migrate:local && bun ./wrangler-env.ts dev --local",
-    "generate-types": "bun ./wrangler-env.ts types ./types/worker-configuration.d.ts",
+    "generate-types": "bun ./tools/generate-worker-types.ts",
     "pretypecheck": "bun run generate-types",
     "typecheck": "tsc -b --noEmit",
     "inspect": "bunx -p @mcpjam/inspector inspector",
