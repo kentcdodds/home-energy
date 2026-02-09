@@ -27,12 +27,34 @@ clients.
 - Lets you add appliances by watts or by amps + volts (stored as watts).
 - Shows a running total of watts across all appliances.
 - Supports deleting appliances to keep totals accurate.
-- Exposes MCP tools for list, add, delete, and total-watts flows.
+- Exposes MCP tools for list, add, edit, delete, and total-watts flows.
+- Exposes an MCP App launch tool (`open_appliance_energy_app`) that opens an
+  interactive appliance simulation UI in MCP Apps-compatible hosts.
 
 ## Who It Is For
 
 - People estimating household loads or comparing appliance usage.
 - Teams that want a simple, auditable energy-usage list with automation hooks.
+
+## MCP App: Appliance Energy Simulator
+
+The MCP server now includes an app-launch tool that opens an interactive
+simulator UI with per-appliance knobs. The simulator uses client-side state only
+(no persistence) and calculates:
+
+- Per-appliance daily kWh
+- Total daily kWh
+- Average watts and peak watts
+- 24-hour aggregated load profile
+
+Per-appliance knobs:
+
+- enabled
+- hours per day
+- duty cycle percent
+- start hour
+- quantity
+- optional override watts
 
 ## Project Lineage
 

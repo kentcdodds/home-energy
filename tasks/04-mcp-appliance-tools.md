@@ -8,6 +8,8 @@ are available outside the Remix UI.
 - Replace the math demo tool with appliance-focused tools
 - Ensure MCP requests are scoped to the authenticated user
 - Provide tools for list, add, delete, and total watts
+- Provide an MCP App launch tool/resource pair for interactive appliance
+  simulation controls
 
 ## Acceptance criteria
 
@@ -15,6 +17,8 @@ are available outside the Remix UI.
 - MCP tools exist for adding and deleting appliances
 - Each tool uses the authenticated user context from MCP auth
 - Tool responses are structured and include watts values
+- MCP Apps hosts can launch a `ui://...` appliance simulator resource via a
+  linked tool (`_meta.ui.resourceUri`)
 
 ## MCP server best practices (from reference servers)
 
@@ -39,6 +43,6 @@ are available outside the Remix UI.
 
 ## Testing
 
-Automated: extend MCP server tests to cover list/add/delete and totals. Manual:
-use an MCP client to add an appliance, list appliances, and read the total watts
-response.
+Automated: extend MCP server tests to cover list/add/delete, totals, and MCP app
+launch payloads. Manual: use an MCP client/host to add an appliance, list
+appliances, read total watts, then launch the appliance simulator app.
