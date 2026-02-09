@@ -1,5 +1,9 @@
 import { App, type McpUiHostContext } from '@modelcontextprotocol/ext-apps'
-import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import {
+	ListToolsRequestSchema,
+	type CallToolResult,
+	type Tool,
+} from '@modelcontextprotocol/sdk/types.js'
 import { type Handle } from 'remix/component'
 
 type ConnectionStatus = 'connecting' | 'connected' | 'error'
@@ -81,6 +85,57 @@ type SimulationToolPayload = {
 }
 
 const appInfo = { name: 'Appliance Energy App', version: '1.0.0' }
+
+const appToolDefinitions: Array<Tool> = [
+	{
+		name: 'get_appliance_simulation_state',
+		description:
+			'Get current appliance knob values, derived totals, and hourly load profile.',
+		inputSchema: { type: 'object', properties: {} },
+	},
+	{
+		name: 'set_appliance_controls',
+		description:
+			'Update per-appliance control knobs by appliance id or name and return recalculated totals.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				updates: {
+					type: 'array',
+					minItems: 1,
+					items: {
+						type: 'object',
+						properties: {
+							id: { type: 'number', minimum: 1 },
+							name: { type: 'string' },
+							enabled: { type: 'boolean' },
+							hoursPerDay: { type: 'number', minimum: 0, maximum: 24 },
+							dutyCyclePercent: { type: 'number', minimum: 0, maximum: 100 },
+							startHour: { type: 'number', minimum: 0, maximum: 23 },
+							quantity: { type: 'number', minimum: 1, maximum: 100 },
+							overrideWatts: { type: ['number', 'null'], minimum: 1 },
+						},
+					},
+				},
+			},
+			required: ['updates'],
+		},
+	},
+	{
+		name: 'reset_appliance_controls',
+		description:
+			'Reset controls to defaults for selected appliance ids, or for all appliances if ids is omitted.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				ids: {
+					type: 'array',
+					items: { type: 'number', minimum: 1 },
+				},
+			},
+		},
+	},
+]
 
 function clampNumber(value: number, min: number, max: number) {
 	return Math.min(Math.max(value, min), max)
@@ -497,13 +552,9 @@ export function McpApplianceApp(handle: Handle) {
 				handle.update()
 			}
 
-			nextApp.onlisttools = async () => ({
-				tools: [
-					'get_appliance_simulation_state',
-					'set_appliance_controls',
-					'reset_appliance_controls',
-				],
-			})
+			nextApp.setRequestHandler(ListToolsRequestSchema, async () => ({
+				tools: appToolDefinitions,
+			}))
 
 			nextApp.oncalltool = handleToolCall
 
