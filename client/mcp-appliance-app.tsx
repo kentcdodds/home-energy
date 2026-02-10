@@ -596,12 +596,12 @@ export function McpApplianceApp(handle: Handle) {
 			nextApp.ontoolresult = (result) => {
 				const payload = (result as { structuredContent?: unknown })
 					.structuredContent
-				if (isLaunchPayload(payload)) {
-					hydrateFromLaunchPayload(payload)
-					return
-				}
 				if (isSimulationToolPayload(payload)) {
 					hydrateFromSimulationPayload(payload)
+					return
+				}
+				if (isLaunchPayload(payload)) {
+					hydrateFromLaunchPayload(payload)
 				}
 			}
 
