@@ -386,6 +386,7 @@ async function requestFullscreenDisplayMode(app: App) {
 export function McpApplianceApp(handle: Handle) {
 	let hostContext: McpUiHostContext | undefined
 	let connectedApp: App | null = null
+	let pollingAbortController: AbortController | null = null
 	let connectionStatus: ConnectionStatus = 'connecting'
 	let connectionMessage: string | null = 'Connecting to host…'
 	let loadError: string | null = null
@@ -656,6 +657,8 @@ export function McpApplianceApp(handle: Handle) {
 
 	async function connect(signal: AbortSignal) {
 		try {
+			pollingAbortController?.abort()
+			pollingAbortController = null
 			connectionStatus = 'connecting'
 			connectionMessage = 'Connecting to host…'
 			loadError = null
@@ -676,6 +679,8 @@ export function McpApplianceApp(handle: Handle) {
 			}
 
 			nextApp.onteardown = async () => {
+				pollingAbortController?.abort()
+				pollingAbortController = null
 				connectedApp = null
 				return {}
 			}
@@ -723,8 +728,11 @@ export function McpApplianceApp(handle: Handle) {
 				connectionMessage = 'Connected in inline mode.'
 			}
 			handle.update()
-			void startSimulationPolling(nextApp, signal)
+			pollingAbortController = new AbortController()
+			void startSimulationPolling(nextApp, pollingAbortController.signal)
 		} catch (error) {
+			pollingAbortController?.abort()
+			pollingAbortController = null
 			connectedApp = null
 			connectionStatus = 'error'
 			connectionMessage = null
