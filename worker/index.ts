@@ -1,6 +1,11 @@
 import { OAuthProvider } from '@cloudflare/workers-oauth-provider'
 import { MCP } from '../mcp/index.ts'
 import { handleRequest } from '../server/handler.ts'
+import { simulationHubConnectPath, SimulationHub } from './simulation-hub.ts'
+import {
+	simulationStreamPath,
+	verifySimulationStreamToken,
+} from './simulation-stream-auth.ts'
 import {
 	apiHandler,
 	handleAuthorizeRequest,
@@ -17,7 +22,39 @@ import {
 } from './mcp-auth.ts'
 import { withCors } from './utils.ts'
 
-export { MCP }
+type SimulationHubBindingEnv = Env & {
+	SIMULATION_HUB: DurableObjectNamespace
+}
+
+async function handleSimulationStreamRequest(request: Request, env: Env) {
+	const upgradeHeader = request.headers.get('Upgrade')
+	if (!upgradeHeader || upgradeHeader.toLowerCase() !== 'websocket') {
+		return new Response('Expected websocket upgrade.', { status: 426 })
+	}
+	const url = new URL(request.url)
+	const token = url.searchParams.get('token')
+	if (!token) {
+		return new Response('Missing simulation stream token.', { status: 401 })
+	}
+	const tokenResult = await verifySimulationStreamToken({
+		secret: env.COOKIE_SECRET,
+		token,
+	})
+	if (!tokenResult.ok) {
+		return new Response('Invalid simulation stream token.', { status: 401 })
+	}
+	const simulationEnv = env as SimulationHubBindingEnv
+	const hubId = simulationEnv.SIMULATION_HUB.idFromName(
+		`owner:${tokenResult.ownerId}`,
+	)
+	const hub = simulationEnv.SIMULATION_HUB.get(hubId)
+	const hubUrl = new URL(request.url)
+	hubUrl.pathname = simulationHubConnectPath
+	hubUrl.search = ''
+	return hub.fetch(new Request(hubUrl.toString(), request))
+}
+
+export { MCP, SimulationHub }
 
 const appHandler = withCors({
 	getCorsHeaders(request) {
@@ -64,6 +101,10 @@ const appHandler = withCors({
 					binding: 'MCP_OBJECT',
 				}).fetch,
 			})
+		}
+
+		if (url.pathname === simulationStreamPath) {
+			return handleSimulationStreamRequest(request, env)
 		}
 
 		// Try to serve static assets for safe methods only

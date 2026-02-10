@@ -9,6 +9,10 @@
 			"new_sqlite_classes": ["MCP"],
 			"tag": "v1",
 		},
+		{
+			"new_sqlite_classes": ["SimulationHub"],
+			"tag": "v2",
+		},
 	],
 
 	"observability": {
@@ -25,6 +29,10 @@
 					{
 						"class_name": "MCP",
 						"name": "MCP_OBJECT",
+					},
+					{
+						"class_name": "SimulationHub",
+						"name": "SIMULATION_HUB",
 					},
 				],
 			},
@@ -55,6 +63,10 @@
 						"class_name": "MCP",
 						"name": "MCP_OBJECT",
 					},
+					{
+						"class_name": "SimulationHub",
+						"name": "SIMULATION_HUB",
+					},
 				],
 			},
 			"d1_databases": [
@@ -83,6 +95,10 @@
 					{
 						"class_name": "MCP",
 						"name": "MCP_OBJECT",
+					},
+					{
+						"class_name": "SimulationHub",
+						"name": "SIMULATION_HUB",
 					},
 				],
 			},

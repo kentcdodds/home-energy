@@ -45,9 +45,10 @@ The MCP server now includes an app-launch tool that opens an interactive
 simulator UI with per-appliance knobs. App-side interactions stay local to the
 UI session, and server simulation tools keep an owner-scoped persisted control
 state so models and the open app can iteratively adjust the same scenario. While
-the app is open, tool-result notifications now rehydrate the visible UI so model
-tool calls update the chart and controls in place. The app also requests
-fullscreen mode on connect when the host supports it. Both flows calculate:
+the app is open, a signed websocket stream pushes simulation updates in real
+time, with tool-result hydration and polling as fallback so model tool calls
+update the chart and controls in place. The app also requests fullscreen mode on
+connect when the host supports it. Both flows calculate:
 
 - Per-appliance daily kWh
 - Total daily kWh

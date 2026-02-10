@@ -5,6 +5,11 @@ import { McpAgent } from 'agents/mcp'
 import { normalizeEmail } from '../server/normalize-email.ts'
 import { createDb, sql } from '../worker/db.ts'
 import { userIdSchema } from '../worker/model-schemas.ts'
+import {
+	simulationHubControlGetPath,
+	simulationHubControlSetPath,
+	simulationHubPublishPath,
+} from '../worker/simulation-hub.ts'
 import { registerTools } from './tools.ts'
 
 async function resolveUserId(db: ReturnType<typeof createDb>, email: string) {
@@ -45,8 +50,12 @@ export type Props = {
 	baseUrl: string
 	user?: TokenSummary['grant']['props']
 }
+
+type SimulationHubBindingEnv = Env & {
+	SIMULATION_HUB: DurableObjectNamespace
+}
+
 export class MCP extends McpAgent<Env, State, Props> {
-	private simulationControlsKeyPrefix = 'mcp:simulation-controls'
 	server = new McpServer(
 		{
 			name: 'MCP',
@@ -82,19 +91,33 @@ export class MCP extends McpAgent<Env, State, Props> {
 		return createDb(this.env.APP_DB)
 	}
 
-	private getSimulationControlsKey(ownerId: number) {
-		return `${this.simulationControlsKeyPrefix}:${ownerId}`
+	requireCookieSecret() {
+		const secret = this.env.COOKIE_SECRET
+		invariant(
+			secret,
+			'This should never happen, but somehow we did not get COOKIE_SECRET from the environment',
+		)
+		return secret
 	}
 
-	async getSimulationControls(ownerId: number) {
-		const key = this.getSimulationControlsKey(ownerId)
-		const stored = await this.env.OAUTH_KV.get(key, 'json')
-		if (!stored || typeof stored !== 'object') {
-			return new Map<number, ApplianceSimulationControl>()
-		}
+	private getSimulationHub(ownerId: number) {
+		const simulationEnv = this.env as SimulationHubBindingEnv
+		const hubId = simulationEnv.SIMULATION_HUB.idFromName(`owner:${ownerId}`)
+		return simulationEnv.SIMULATION_HUB.get(hubId)
+	}
+
+	private createSimulationHubRequest(pathname: string, init?: RequestInit) {
+		const baseUrl = new URL(this.requireDomain())
+		baseUrl.pathname = pathname
+		baseUrl.search = ''
+		return new Request(baseUrl.toString(), init)
+	}
+
+	private toSimulationControlsMap(value: unknown) {
 		const controls = new Map<number, ApplianceSimulationControl>()
+		if (!value || typeof value !== 'object') return controls
 		for (const [idText, control] of Object.entries(
-			stored as Record<string, ApplianceSimulationControl>,
+			value as Record<string, ApplianceSimulationControl>,
 		)) {
 			const id = Number(idText)
 			if (!Number.isInteger(id) || id <= 0) continue
@@ -104,19 +127,46 @@ export class MCP extends McpAgent<Env, State, Props> {
 		return controls
 	}
 
+	async getSimulationControls(ownerId: number) {
+		const hub = this.getSimulationHub(ownerId)
+		const response = await hub.fetch(
+			this.createSimulationHubRequest(simulationHubControlGetPath),
+		)
+		if (!response.ok) {
+			return new Map<number, ApplianceSimulationControl>()
+		}
+		const body = (await response.json().catch(() => null)) as {
+			controls?: unknown
+		} | null
+		return this.toSimulationControlsMap(body?.controls)
+	}
+
 	async setSimulationControls(
 		ownerId: number,
 		controls: Map<number, ApplianceSimulationControl>,
 	) {
-		const key = this.getSimulationControlsKey(ownerId)
-		if (controls.size === 0) {
-			await this.env.OAUTH_KV.delete(key)
-			return
-		}
-		const payload = Object.fromEntries(
+		const hub = this.getSimulationHub(ownerId)
+		const controlsRecord = Object.fromEntries(
 			Array.from(controls.entries(), ([id, control]) => [String(id), control]),
 		)
-		await this.env.OAUTH_KV.put(key, JSON.stringify(payload))
+		await hub.fetch(
+			this.createSimulationHubRequest(simulationHubControlSetPath, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ controls: controlsRecord }),
+			}),
+		)
+	}
+
+	async publishSimulationUpdate(ownerId: number, payload: unknown) {
+		const hub = this.getSimulationHub(ownerId)
+		await hub.fetch(
+			this.createSimulationHubRequest(simulationHubPublishPath, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ payload }),
+			}),
+		)
 	}
 
 	async requireOwnerId() {

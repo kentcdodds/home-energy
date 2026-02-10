@@ -85,6 +85,17 @@ type SimulationToolPayload = {
 	updatedAt: string
 }
 
+type SimulationStreamToolPayload = {
+	ok: true
+	wsUrl: string
+	expiresAt: string
+}
+
+type SimulationStreamMessage = {
+	type: 'simulation_state_updated'
+	payload: unknown
+}
+
 type HydrateOptions = {
 	announce: boolean
 }
@@ -345,6 +356,25 @@ function isSimulationToolPayload(
 	)
 }
 
+function isSimulationStreamToolPayload(
+	value: unknown,
+): value is SimulationStreamToolPayload {
+	if (!value || typeof value !== 'object') return false
+	const payload = value as Record<string, unknown>
+	return (
+		payload.ok === true &&
+		typeof payload.wsUrl === 'string' &&
+		typeof payload.expiresAt === 'string'
+	)
+}
+
+function getSimulationPayloadFromStreamMessage(value: unknown) {
+	if (!value || typeof value !== 'object') return null
+	const message = value as SimulationStreamMessage
+	if (message.type !== 'simulation_state_updated') return null
+	return isSimulationToolPayload(message.payload) ? message.payload : null
+}
+
 function getToolStructuredContent(result: unknown) {
 	if (!result || typeof result !== 'object') return null
 	const payload = result as { structuredContent?: unknown }
@@ -387,6 +417,7 @@ export function McpApplianceApp(handle: Handle) {
 	let hostContext: McpUiHostContext | undefined
 	let connectedApp: App | null = null
 	let pollingAbortController: AbortController | null = null
+	let simulationSocket: WebSocket | null = null
 	let connectionStatus: ConnectionStatus = 'connecting'
 	let connectionMessage: string | null = 'Connecting to host…'
 	let loadError: string | null = null
@@ -684,10 +715,92 @@ export function McpApplianceApp(handle: Handle) {
 		}
 	}
 
+	function closeSimulationSocket() {
+		const socket = simulationSocket
+		if (!socket) return
+		simulationSocket = null
+		try {
+			socket.close(1000, 'Simulation stream closed.')
+		} catch {
+			// Ignore close errors; socket is already detached.
+		}
+	}
+
+	async function getSimulationStreamInfo(app: App) {
+		const result = await app.callServerTool({
+			name: 'get_appliance_simulation_stream',
+			arguments: {},
+		})
+		const payload = getToolStructuredContent(result)
+		return isSimulationStreamToolPayload(payload) ? payload : null
+	}
+
+	async function openSimulationSocket(
+		streamInfo: SimulationStreamToolPayload,
+		signal: AbortSignal,
+	) {
+		return new Promise<void>((resolve) => {
+			if (signal.aborted) {
+				resolve()
+				return
+			}
+			let completed = false
+			const socket = new WebSocket(streamInfo.wsUrl)
+			simulationSocket = socket
+			function finish() {
+				if (completed) return
+				completed = true
+				if (simulationSocket === socket) {
+					simulationSocket = null
+				}
+				signal.removeEventListener('abort', onAbort)
+				resolve()
+			}
+			function onAbort() {
+				try {
+					socket.close(1000, 'Simulation stream aborted.')
+				} catch {
+					// Ignore close errors when aborting.
+				}
+				finish()
+			}
+			socket.addEventListener('message', (event) => {
+				if (typeof event.data !== 'string') return
+				try {
+					const parsed = JSON.parse(event.data)
+					const payload = getSimulationPayloadFromStreamMessage(parsed)
+					if (payload) {
+						hydrateFromSimulationPayload(payload, { announce: false })
+					}
+				} catch {
+					// Ignore malformed messages and wait for next payload.
+				}
+			})
+			socket.addEventListener('close', finish)
+			socket.addEventListener('error', finish)
+			signal.addEventListener('abort', onAbort, { once: true })
+		})
+	}
+
+	async function startSimulationStream(app: App, signal: AbortSignal) {
+		while (!signal.aborted) {
+			try {
+				const streamInfo = await getSimulationStreamInfo(app)
+				if (streamInfo) {
+					await openSimulationSocket(streamInfo, signal)
+				}
+			} catch {
+				// Stream setup can fail on unsupported hosts; retry while polling keeps state fresh.
+			}
+			await sleepWithSignal(1500, signal)
+		}
+	}
+
 	async function connect(signal: AbortSignal) {
 		try {
 			pollingAbortController?.abort()
 			pollingAbortController = null
+			closeSimulationSocket()
 			connectionStatus = 'connecting'
 			connectionMessage = 'Connecting to host…'
 			loadError = null
@@ -710,6 +823,7 @@ export function McpApplianceApp(handle: Handle) {
 			nextApp.onteardown = async () => {
 				pollingAbortController?.abort()
 				pollingAbortController = null
+				closeSimulationSocket()
 				connectedApp = null
 				return {}
 			}
@@ -759,9 +873,11 @@ export function McpApplianceApp(handle: Handle) {
 			handle.update()
 			pollingAbortController = new AbortController()
 			void startSimulationPolling(nextApp, pollingAbortController.signal)
+			void startSimulationStream(nextApp, pollingAbortController.signal)
 		} catch (error) {
 			pollingAbortController?.abort()
 			pollingAbortController = null
+			closeSimulationSocket()
 			connectedApp = null
 			connectionStatus = 'error'
 			connectionMessage = null

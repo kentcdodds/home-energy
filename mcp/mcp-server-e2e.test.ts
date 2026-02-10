@@ -686,6 +686,67 @@ test(
 )
 
 test(
+	'mcp server shares simulation controls across MCP sessions for one owner',
+	async () => {
+		await using database = await createTestDatabase()
+		await using server = await startDevServer(database.persistDir)
+		await using firstClient = await createMcpClient(
+			server.origin,
+			database.user,
+		)
+
+		await firstClient.client.callTool({
+			name: 'add_appliances',
+			arguments: {
+				appliances: [{ name: 'FridgeSingle', watts: 150 }],
+			},
+		})
+		await firstClient.client.callTool({
+			name: 'set_appliance_simulation_controls',
+			arguments: {
+				updates: [{ name: 'FridgeSingle', hoursPerDay: 12, quantity: 2 }],
+			},
+		})
+
+		await using secondClient = await createMcpClient(
+			server.origin,
+			database.user,
+		)
+		const secondStateResult = (await secondClient.client.callTool({
+			name: 'get_appliance_simulation_state',
+			arguments: {},
+		})) as CallToolResult
+		const secondState = getStructuredOutput(secondStateResult) as {
+			ok: boolean
+			appliances: Array<{
+				name: string
+				control: {
+					hoursPerDay: number
+					quantity: number
+				}
+				derived: {
+					dailyKwh: number
+				}
+			}>
+			totals: {
+				dailyKwh: number
+			}
+		}
+
+		expect(secondState.ok).toBe(true)
+		const fridge = secondState.appliances.find(
+			(appliance) => appliance.name === 'FridgeSingle',
+		)
+		expect(fridge).toBeDefined()
+		expect(fridge?.control.hoursPerDay).toBe(12)
+		expect(fridge?.control.quantity).toBe(2)
+		expect(fridge?.derived.dailyKwh).toBeCloseTo(3.6, 6)
+		expect(secondState.totals.dailyKwh).toBeCloseTo(3.6, 6)
+	},
+	{ timeout: defaultTimeoutMs },
+)
+
+test(
 	'mcp server manages appliances via tools',
 	async () => {
 		await using database = await createTestDatabase()

@@ -6,6 +6,10 @@ import {
 } from '@modelcontextprotocol/ext-apps/server'
 import { createApplianceStore } from '../worker/appliances.ts'
 import { applianceSummarySchema } from '../worker/model-schemas.ts'
+import {
+	createSimulationStreamToken,
+	simulationStreamPath,
+} from '../worker/simulation-stream-auth.ts'
 import { type ApplianceSimulationControl, type MCP } from './index.ts'
 
 type ApplianceSummary = z.infer<typeof applianceSummarySchema>
@@ -90,6 +94,12 @@ type SimulationToolPayload = {
 	hourlyLoadWatts: Array<number>
 	applianceCount: number
 	updatedAt: string
+}
+
+type SimulationStreamPayload = {
+	ok: true
+	wsUrl: string
+	expiresAt: string
 }
 
 const applianceInputSchema = z
@@ -518,6 +528,14 @@ async function getSimulationSnapshot(agent: MCP, ownerId: number) {
 	return { appliancesWithControl, snapshot }
 }
 
+async function publishSimulationSnapshot(agent: MCP, ownerId: number) {
+	const { snapshot } = await getSimulationSnapshot(agent, ownerId)
+	await agent.publishSimulationUpdate(
+		ownerId,
+		toSimulationToolPayload(snapshot),
+	)
+}
+
 function createApplianceAppHtml(origin: string, assetVersion: string) {
 	const base = new URL(origin)
 	const appScriptUrl = new URL('/mcp-appliance-app.js', base)
@@ -566,7 +584,14 @@ function getCspDomains(origin: string): string[] {
 	} else if (url.hostname === '127.0.0.1') {
 		origins.push(`${url.protocol}//localhost:${port}`)
 	}
-	return [...new Set(origins)]
+	const domains = new Set<string>()
+	for (const currentOrigin of origins) {
+		domains.add(currentOrigin)
+		const currentUrl = new URL(currentOrigin)
+		const socketProtocol = currentUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+		domains.add(`${socketProtocol}//${currentUrl.host}`)
+	}
+	return [...domains]
 }
 
 function toApplianceAppSeed(appliance: ApplianceSummary): ApplianceAppSeed {
@@ -668,6 +693,7 @@ export async function registerTools(agent: MCP) {
 				added: created.map(toSummary),
 				...summary,
 			}
+			await publishSimulationSnapshot(agent, ownerId)
 			return {
 				content: [
 					{
@@ -735,6 +761,7 @@ export async function registerTools(agent: MCP) {
 			const missingText = missingIds.length
 				? ` ${missingIds.length} missing.`
 				: ''
+			await publishSimulationSnapshot(agent, ownerId)
 			return {
 				content: [
 					{
@@ -768,6 +795,7 @@ export async function registerTools(agent: MCP) {
 			const list = await store.listByOwner(ownerId)
 			const summary = summarizeAppliances(list.map(toSummary))
 			const payload = { ok: true, deletedIds: ids, ...summary }
+			await publishSimulationSnapshot(agent, ownerId)
 			return {
 				content: [
 					{
@@ -789,6 +817,44 @@ export async function registerTools(agent: MCP) {
 		'set_appliance_simulation_controls',
 		'reset_appliance_simulation_controls',
 	] as const
+
+	registerAppTool(
+		agent.server,
+		'get_appliance_simulation_stream',
+		{
+			title: 'Get Appliance Simulation Stream',
+			description:
+				'Get an app-only websocket endpoint for real-time simulation updates.',
+			inputSchema: {},
+			annotations: { readOnlyHint: true },
+			_meta: {
+				ui: {
+					resourceUri: applianceAppResourceUri,
+					visibility: ['app'],
+				},
+			},
+		},
+		async () => {
+			const ownerId = await agent.requireOwnerId()
+			const { token, expiresAt } = await createSimulationStreamToken({
+				secret: agent.requireCookieSecret(),
+				ownerId,
+			})
+			const baseUrl = new URL(agent.requireDomain())
+			baseUrl.pathname = simulationStreamPath
+			baseUrl.searchParams.set('token', token)
+			baseUrl.protocol = baseUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+			const payload: SimulationStreamPayload = {
+				ok: true,
+				wsUrl: baseUrl.toString(),
+				expiresAt,
+			}
+			return {
+				content: [{ type: 'text', text: JSON.stringify(payload) }],
+				structuredContent: payload,
+			}
+		},
+	)
 
 	registerAppTool(
 		agent.server,
@@ -856,6 +922,7 @@ export async function registerTools(agent: MCP) {
 				appliedCount,
 				missingTargets,
 			}
+			await agent.publishSimulationUpdate(ownerId, payload)
 			const missingText =
 				missingTargets.length > 0
 					? ` Missing targets: ${missingTargets.join(', ')}.`
@@ -912,6 +979,7 @@ export async function registerTools(agent: MCP) {
 				resetCount,
 				resetAll: ids == null,
 			}
+			await agent.publishSimulationUpdate(ownerId, payload)
 			return {
 				content: [
 					{
