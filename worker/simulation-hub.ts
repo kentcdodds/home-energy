@@ -1,3 +1,4 @@
+import { DurableObject } from 'cloudflare:workers'
 import type { ApplianceSimulationControl } from '../mcp/index.ts'
 
 const controlsStorageKey = 'simulation-controls'
@@ -14,8 +15,8 @@ type SimulationStreamEnvelope = {
 	payload: unknown
 }
 
-function isFiniteNumber(value: unknown) {
-	return typeof value === 'number' && Number.isFinite(value)
+function toFiniteNumber(value: unknown) {
+	return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function toSimulationControl(
@@ -23,25 +24,25 @@ function toSimulationControl(
 ): ApplianceSimulationControl | null {
 	if (!value || typeof value !== 'object') return null
 	const candidate = value as Record<string, unknown>
+	const hoursPerDay = toFiniteNumber(candidate.hoursPerDay)
+	const dutyCyclePercent = toFiniteNumber(candidate.dutyCyclePercent)
+	const startHour = toFiniteNumber(candidate.startHour)
+	const quantity = toFiniteNumber(candidate.quantity)
+	const overrideWatts =
+		candidate.overrideWatts == null ? null : toFiniteNumber(candidate.overrideWatts)
 	if (typeof candidate.enabled !== 'boolean') return null
-	if (!isFiniteNumber(candidate.hoursPerDay)) return null
-	if (!isFiniteNumber(candidate.dutyCyclePercent)) return null
-	if (!isFiniteNumber(candidate.startHour)) return null
-	if (!isFiniteNumber(candidate.quantity)) return null
-	if (
-		candidate.overrideWatts != null &&
-		!isFiniteNumber(candidate.overrideWatts)
-	) {
-		return null
-	}
+	if (hoursPerDay == null) return null
+	if (dutyCyclePercent == null) return null
+	if (startHour == null) return null
+	if (quantity == null) return null
+	if (candidate.overrideWatts != null && overrideWatts == null) return null
 	return {
 		enabled: candidate.enabled,
-		hoursPerDay: candidate.hoursPerDay,
-		dutyCyclePercent: candidate.dutyCyclePercent,
-		startHour: candidate.startHour,
-		quantity: candidate.quantity,
-		overrideWatts:
-			candidate.overrideWatts == null ? null : candidate.overrideWatts,
+		hoursPerDay,
+		dutyCyclePercent,
+		startHour,
+		quantity,
+		overrideWatts,
 	}
 }
 
