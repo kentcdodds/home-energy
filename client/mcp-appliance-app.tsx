@@ -324,7 +324,9 @@ function isLaunchPayload(value: unknown): value is LaunchPayload {
 	)
 }
 
-function isSimulationToolPayload(value: unknown): value is SimulationToolPayload {
+function isSimulationToolPayload(
+	value: unknown,
+): value is SimulationToolPayload {
 	if (!value || typeof value !== 'object') return false
 	const payload = value as Record<string, unknown>
 	if (payload.ok !== true) return false

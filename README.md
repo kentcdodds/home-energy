@@ -46,8 +46,8 @@ simulator UI with per-appliance knobs. App-side interactions stay local to the
 UI session, and server simulation tools keep a session-scoped control state so
 models can iteratively adjust scenarios. While the app is open, tool-result
 notifications now rehydrate the visible UI so model tool calls update the chart
-and controls in place. The app also requests fullscreen mode on connect when
-the host supports it. Both flows calculate:
+and controls in place. The app also requests fullscreen mode on connect when the
+host supports it. Both flows calculate:
 
 - Per-appliance daily kWh
 - Total daily kWh
