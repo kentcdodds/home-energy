@@ -82,10 +82,30 @@ type SimulationToolPayload = {
 	}>
 	totals: SimulationTotals
 	hourlyLoadWatts: Array<number>
+	applianceCount: number
 	updatedAt: string
 }
 
+type SimulationStreamToolPayload = {
+	ok: true
+	wsUrl: string
+	expiresAt: string
+}
+
+type SimulationStreamMessage = {
+	type: 'simulation_state_updated'
+	payload: unknown
+}
+
+type HydrateOptions = {
+	announce: boolean
+}
+
 const appInfo = { name: 'Appliance Energy App', version: '1.0.0' }
+const appCapabilities = {
+	tools: { listChanged: false },
+	availableDisplayModes: ['inline', 'fullscreen'],
+} satisfies NonNullable<ConstructorParameters<typeof App>[1]>
 
 const appToolDefinitions: Array<Tool> = [
 	{
@@ -298,6 +318,7 @@ function toSimulationToolPayload(
 		})),
 		totals: snapshot.totals,
 		hourlyLoadWatts: snapshot.hourlyLoadWatts,
+		applianceCount: snapshot.appliances.length,
 		updatedAt: new Date().toISOString(),
 	}
 }
@@ -320,8 +341,87 @@ function isLaunchPayload(value: unknown): value is LaunchPayload {
 	)
 }
 
+function isSimulationToolPayload(
+	value: unknown,
+): value is SimulationToolPayload {
+	if (!value || typeof value !== 'object') return false
+	const payload = value as Record<string, unknown>
+	if (payload.ok !== true) return false
+	if (!Array.isArray(payload.appliances)) return false
+	if (!Array.isArray(payload.hourlyLoadWatts)) return false
+	if (typeof payload.applianceCount !== 'number') return false
+	if (!payload.totals || typeof payload.totals !== 'object') return false
+	return (
+		typeof payload.updatedAt === 'string' &&
+		typeof (payload.totals as Record<string, unknown>).dailyKwh === 'number' &&
+		typeof (payload.totals as Record<string, unknown>).peakWatts === 'number' &&
+		typeof (payload.totals as Record<string, unknown>).averageWatts === 'number'
+	)
+}
+
+function isSimulationStreamToolPayload(
+	value: unknown,
+): value is SimulationStreamToolPayload {
+	if (!value || typeof value !== 'object') return false
+	const payload = value as Record<string, unknown>
+	return (
+		payload.ok === true &&
+		typeof payload.wsUrl === 'string' &&
+		typeof payload.expiresAt === 'string'
+	)
+}
+
+function getSimulationPayloadFromStreamMessage(value: unknown) {
+	if (!value || typeof value !== 'object') return null
+	const message = value as SimulationStreamMessage
+	if (message.type !== 'simulation_state_updated') return null
+	return isSimulationToolPayload(message.payload) ? message.payload : null
+}
+
+function getToolStructuredContent(result: unknown) {
+	if (!result || typeof result !== 'object') return null
+	const payload = result as { structuredContent?: unknown }
+	return payload.structuredContent ?? null
+}
+
+function sleepWithSignal(ms: number, signal: AbortSignal) {
+	return new Promise<void>((resolve) => {
+		if (signal.aborted) {
+			resolve()
+			return
+		}
+		const timer = setTimeout(() => {
+			signal.removeEventListener('abort', onAbort)
+			resolve()
+		}, ms)
+		function onAbort() {
+			clearTimeout(timer)
+			resolve()
+		}
+		signal.addEventListener('abort', onAbort, { once: true })
+	})
+}
+
+async function requestFullscreenDisplayMode(app: App) {
+	const context = app.getHostContext()
+	const availableDisplayModes = context?.availableDisplayModes
+	if (!availableDisplayModes?.includes('fullscreen')) {
+		return { attempted: false, granted: context?.displayMode === 'fullscreen' }
+	}
+	try {
+		const result = await app.requestDisplayMode({ mode: 'fullscreen' })
+		return { attempted: true, granted: result.mode === 'fullscreen' }
+	} catch {
+		return { attempted: true, granted: false }
+	}
+}
+
 export function McpApplianceApp(handle: Handle) {
 	let hostContext: McpUiHostContext | undefined
+	let connectedApp: App | null = null
+	let pollingAbortController: AbortController | null = null
+	let simulationSocket: WebSocket | null = null
+	let latestControlSyncId = 0
 	let connectionStatus: ConnectionStatus = 'connecting'
 	let connectionMessage: string | null = 'Connecting to host…'
 	let loadError: string | null = null
@@ -351,6 +451,25 @@ export function McpApplianceApp(handle: Handle) {
 		const rows = payload.appliances.map(buildApplianceWithControl)
 		updateSimulation(rows)
 		connectionMessage = `Loaded ${payload.applianceCount} appliance(s).`
+		loadError = null
+		handle.update()
+	}
+
+	function hydrateFromSimulationPayload(
+		payload: SimulationToolPayload,
+		options: HydrateOptions = { announce: true },
+	) {
+		const rows = payload.appliances.map((appliance) => ({
+			id: appliance.id,
+			name: appliance.name,
+			watts: appliance.baseWatts,
+			notes: appliance.notes,
+			control: normalizeControl(appliance.control),
+		}))
+		updateSimulation(rows)
+		if (options.announce) {
+			connectionMessage = 'Simulation updated from tool result.'
+		}
 		loadError = null
 		handle.update()
 	}
@@ -482,6 +601,20 @@ export function McpApplianceApp(handle: Handle) {
 				}
 			}
 			const { appliedCount, missingTargets } = applyToolUpdates(updates)
+			if (connectedApp) {
+				try {
+					const result = await connectedApp.callServerTool({
+						name: 'set_appliance_simulation_controls',
+						arguments: { updates },
+					})
+					const serverPayload = getToolStructuredContent(result)
+					if (isSimulationToolPayload(serverPayload)) {
+						hydrateFromSimulationPayload(serverPayload, { announce: false })
+					}
+				} catch {
+					// Ignore transient sync errors; local updates already applied.
+				}
+			}
 			const payload = toSimulationToolPayload(simulation)
 			const missingText =
 				missingTargets.length > 0
@@ -511,6 +644,21 @@ export function McpApplianceApp(handle: Handle) {
 						.map((value) => Math.round(value))
 				: null
 			const changedCount = resetControls(ids)
+			if (connectedApp) {
+				try {
+					const serverArguments = ids == null ? {} : { ids }
+					const result = await connectedApp.callServerTool({
+						name: 'reset_appliance_simulation_controls',
+						arguments: serverArguments,
+					})
+					const serverPayload = getToolStructuredContent(result)
+					if (isSimulationToolPayload(serverPayload)) {
+						hydrateFromSimulationPayload(serverPayload, { announce: false })
+					}
+				} catch {
+					// Ignore transient sync errors; local reset already applied.
+				}
+			}
 			const payload = toSimulationToolPayload(simulation)
 			return {
 				content: [
@@ -535,20 +683,160 @@ export function McpApplianceApp(handle: Handle) {
 		}
 	}
 
+	async function syncControlUpdateToServer(
+		app: App,
+		selectedId: number,
+		key: keyof ApplianceControl,
+		value: boolean | number | null,
+	) {
+		const requestId = latestControlSyncId + 1
+		latestControlSyncId = requestId
+		try {
+			const update: Record<string, unknown> = { id: selectedId }
+			update[key] = value
+			const result = await app.callServerTool({
+				name: 'set_appliance_simulation_controls',
+				arguments: { updates: [update] },
+			})
+			if (requestId !== latestControlSyncId) return
+			const payload = getToolStructuredContent(result)
+			if (isSimulationToolPayload(payload)) {
+				hydrateFromSimulationPayload(payload, { announce: false })
+			}
+		} catch {
+			// Ignore transient sync failures; polling/stream keeps state in sync.
+		}
+	}
+
+	async function startSimulationPolling(app: App, signal: AbortSignal) {
+		while (!signal.aborted) {
+			try {
+				const result = await app.callServerTool({
+					name: 'get_appliance_simulation_state',
+					arguments: {},
+				})
+				const payload = getToolStructuredContent(result)
+				if (isSimulationToolPayload(payload)) {
+					hydrateFromSimulationPayload(payload, { announce: false })
+				}
+			} catch {
+				// Ignore transient polling failures; next tick retries.
+			}
+			await sleepWithSignal(1500, signal)
+		}
+	}
+
+	function closeSimulationSocket() {
+		const socket = simulationSocket
+		if (!socket) return
+		simulationSocket = null
+		try {
+			socket.close(1000, 'Simulation stream closed.')
+		} catch {
+			// Ignore close errors; socket is already detached.
+		}
+	}
+
+	async function getSimulationStreamInfo(app: App) {
+		const result = await app.callServerTool({
+			name: 'get_appliance_simulation_stream',
+			arguments: {},
+		})
+		const payload = getToolStructuredContent(result)
+		return isSimulationStreamToolPayload(payload) ? payload : null
+	}
+
+	async function openSimulationSocket(
+		streamInfo: SimulationStreamToolPayload,
+		signal: AbortSignal,
+	) {
+		return new Promise<void>((resolve) => {
+			if (signal.aborted) {
+				resolve()
+				return
+			}
+			let completed = false
+			const socket = new WebSocket(streamInfo.wsUrl)
+			simulationSocket = socket
+			function finish() {
+				if (completed) return
+				completed = true
+				if (simulationSocket === socket) {
+					simulationSocket = null
+				}
+				signal.removeEventListener('abort', onAbort)
+				resolve()
+			}
+			function onAbort() {
+				try {
+					socket.close(1000, 'Simulation stream aborted.')
+				} catch {
+					// Ignore close errors when aborting.
+				}
+				finish()
+			}
+			socket.addEventListener('message', (event) => {
+				if (typeof event.data !== 'string') return
+				try {
+					const parsed = JSON.parse(event.data)
+					const payload = getSimulationPayloadFromStreamMessage(parsed)
+					if (payload) {
+						hydrateFromSimulationPayload(payload, { announce: false })
+					}
+				} catch {
+					// Ignore malformed messages and wait for next payload.
+				}
+			})
+			socket.addEventListener('close', finish)
+			socket.addEventListener('error', finish)
+			signal.addEventListener('abort', onAbort, { once: true })
+		})
+	}
+
+	async function startSimulationStream(app: App, signal: AbortSignal) {
+		while (!signal.aborted) {
+			try {
+				const streamInfo = await getSimulationStreamInfo(app)
+				if (streamInfo) {
+					await openSimulationSocket(streamInfo, signal)
+				}
+			} catch {
+				// Stream setup can fail on unsupported hosts; retry while polling keeps state fresh.
+			}
+			await sleepWithSignal(1500, signal)
+		}
+	}
+
 	async function connect(signal: AbortSignal) {
 		try {
+			pollingAbortController?.abort()
+			pollingAbortController = null
+			closeSimulationSocket()
 			connectionStatus = 'connecting'
 			connectionMessage = 'Connecting to host…'
 			loadError = null
 			handle.update()
 
-			const nextApp = new App(appInfo, { tools: { listChanged: false } })
+			const nextApp = new App(appInfo, appCapabilities)
 
 			nextApp.ontoolresult = (result) => {
-				const payload = (result as { structuredContent?: unknown })
-					.structuredContent
-				if (!isLaunchPayload(payload)) return
-				hydrateFromLaunchPayload(payload)
+				const payload = getToolStructuredContent(result)
+				if (isSimulationToolPayload(payload)) {
+					hydrateFromSimulationPayload(payload)
+					return
+				}
+				if (isLaunchPayload(payload)) {
+					hydrateFromLaunchPayload(payload)
+					return
+				}
+			}
+
+			nextApp.onteardown = async () => {
+				pollingAbortController?.abort()
+				pollingAbortController = null
+				closeSimulationSocket()
+				connectedApp = null
+				return {}
 			}
 
 			nextApp.onhostcontextchanged = (context) => {
@@ -581,10 +869,27 @@ export function McpApplianceApp(handle: Handle) {
 			// connect() resolved successfully, so prefer connected state even if this
 			// task signal was aborted during intermediate updates.
 			hostContext = nextApp.getHostContext()
+			const fullscreenRequest = await requestFullscreenDisplayMode(nextApp)
+			hostContext = nextApp.getHostContext()
+			connectedApp = nextApp
 			connectionStatus = 'connected'
-			connectionMessage = 'Connected.'
+			if (hostContext?.displayMode === 'fullscreen') {
+				connectionMessage = 'Connected in fullscreen mode.'
+			} else if (fullscreenRequest.attempted) {
+				connectionMessage =
+					'Connected. Host kept inline mode after fullscreen request.'
+			} else {
+				connectionMessage = 'Connected in inline mode.'
+			}
 			handle.update()
+			pollingAbortController = new AbortController()
+			void startSimulationPolling(nextApp, pollingAbortController.signal)
+			void startSimulationStream(nextApp, pollingAbortController.signal)
 		} catch (error) {
+			pollingAbortController?.abort()
+			pollingAbortController = null
+			closeSimulationSocket()
+			connectedApp = null
 			connectionStatus = 'error'
 			connectionMessage = null
 			const message =
@@ -610,8 +915,9 @@ export function McpApplianceApp(handle: Handle) {
 	) {
 		const selected = getSelectedAppliance()
 		if (!selected) return
+		const selectedId = selected.id
 		const nextRows = applianceRows.map((item) => {
-			if (item.id !== selected.id) return item
+			if (item.id !== selectedId) return item
 			const nextControl = normalizeControl({
 				...item.control,
 				[key]: value as never,
@@ -620,6 +926,9 @@ export function McpApplianceApp(handle: Handle) {
 		})
 		updateSimulation(nextRows)
 		handle.update()
+		if (connectedApp) {
+			void syncControlUpdateToServer(connectedApp, selectedId, key, value)
+		}
 	}
 
 	function getSafeAreaPadding() {

@@ -5,6 +5,11 @@ import { McpAgent } from 'agents/mcp'
 import { normalizeEmail } from '../server/normalize-email.ts'
 import { createDb, sql } from '../worker/db.ts'
 import { userIdSchema } from '../worker/model-schemas.ts'
+import {
+	simulationHubControlGetPath,
+	simulationHubControlSetPath,
+	simulationHubPublishPath,
+} from '../worker/simulation-hub.ts'
 import { registerTools } from './tools.ts'
 
 async function resolveUserId(db: ReturnType<typeof createDb>, email: string) {
@@ -33,10 +38,23 @@ async function ensureUserId(db: ReturnType<typeof createDb>, email: string) {
 }
 
 export type State = {}
+export type ApplianceSimulationControl = {
+	enabled: boolean
+	hoursPerDay: number
+	dutyCyclePercent: number
+	startHour: number
+	quantity: number
+	overrideWatts: number | null
+}
 export type Props = {
 	baseUrl: string
 	user?: TokenSummary['grant']['props']
 }
+
+type SimulationHubBindingEnv = Env & {
+	SIMULATION_HUB: DurableObjectNamespace
+}
+
 export class MCP extends McpAgent<Env, State, Props> {
 	server = new McpServer(
 		{
@@ -45,7 +63,7 @@ export class MCP extends McpAgent<Env, State, Props> {
 		},
 		{
 			instructions:
-				'Use this server to manage appliance energy data for the authenticated user.',
+				'Use this server to manage appliance energy data and run per-appliance simulation knobs for the authenticated user.',
 		},
 	)
 	async init() {
@@ -71,6 +89,84 @@ export class MCP extends McpAgent<Env, State, Props> {
 
 	getDb() {
 		return createDb(this.env.APP_DB)
+	}
+
+	requireCookieSecret() {
+		const secret = this.env.COOKIE_SECRET
+		invariant(
+			secret,
+			'This should never happen, but somehow we did not get COOKIE_SECRET from the environment',
+		)
+		return secret
+	}
+
+	private getSimulationHub(ownerId: number) {
+		const simulationEnv = this.env as SimulationHubBindingEnv
+		const hubId = simulationEnv.SIMULATION_HUB.idFromName(`owner:${ownerId}`)
+		return simulationEnv.SIMULATION_HUB.get(hubId)
+	}
+
+	private createSimulationHubRequest(pathname: string, init?: RequestInit) {
+		const baseUrl = new URL(this.requireDomain())
+		baseUrl.pathname = pathname
+		baseUrl.search = ''
+		return new Request(baseUrl.toString(), init)
+	}
+
+	private toSimulationControlsMap(value: unknown) {
+		const controls = new Map<number, ApplianceSimulationControl>()
+		if (!value || typeof value !== 'object') return controls
+		for (const [idText, control] of Object.entries(
+			value as Record<string, ApplianceSimulationControl>,
+		)) {
+			const id = Number(idText)
+			if (!Number.isInteger(id) || id <= 0) continue
+			if (!control || typeof control !== 'object') continue
+			controls.set(id, control)
+		}
+		return controls
+	}
+
+	async getSimulationControls(ownerId: number) {
+		const hub = this.getSimulationHub(ownerId)
+		const response = await hub.fetch(
+			this.createSimulationHubRequest(simulationHubControlGetPath),
+		)
+		if (!response.ok) {
+			return new Map<number, ApplianceSimulationControl>()
+		}
+		const body = (await response.json().catch(() => null)) as {
+			controls?: unknown
+		} | null
+		return this.toSimulationControlsMap(body?.controls)
+	}
+
+	async setSimulationControls(
+		ownerId: number,
+		controls: Map<number, ApplianceSimulationControl>,
+	) {
+		const hub = this.getSimulationHub(ownerId)
+		const controlsRecord = Object.fromEntries(
+			Array.from(controls.entries(), ([id, control]) => [String(id), control]),
+		)
+		await hub.fetch(
+			this.createSimulationHubRequest(simulationHubControlSetPath, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ controls: controlsRecord }),
+			}),
+		)
+	}
+
+	async publishSimulationUpdate(ownerId: number, payload: unknown) {
+		const hub = this.getSimulationHub(ownerId)
+		await hub.fetch(
+			this.createSimulationHubRequest(simulationHubPublishPath, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ payload }),
+			}),
+		)
 	}
 
 	async requireOwnerId() {
