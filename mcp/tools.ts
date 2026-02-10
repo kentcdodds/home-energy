@@ -799,7 +799,12 @@ export async function registerTools(agent: MCP) {
 				'Get appliance knob values, derived totals, and the 24-hour load profile.',
 			inputSchema: {},
 			annotations: { readOnlyHint: true },
-			_meta: { ui: { resourceUri: applianceAppResourceUri } },
+			_meta: {
+				ui: {
+					resourceUri: applianceAppResourceUri,
+					visibility: ['model', 'app'],
+				},
+			},
 		},
 		async () => {
 			const ownerId = await agent.requireOwnerId()
@@ -829,7 +834,12 @@ export async function registerTools(agent: MCP) {
 				updates: z.array(applianceControlUpdateSchema).min(1),
 			},
 			annotations: { idempotentHint: true },
-			_meta: { ui: { resourceUri: applianceAppResourceUri } },
+			_meta: {
+				ui: {
+					resourceUri: applianceAppResourceUri,
+					visibility: ['model', 'app'],
+				},
+			},
 		},
 		async ({ updates }: { updates: Array<ApplianceControlUpdateInput> }) => {
 			const ownerId = await agent.requireOwnerId()
@@ -874,7 +884,12 @@ export async function registerTools(agent: MCP) {
 				ids: z.array(z.number().int().positive()).optional(),
 			},
 			annotations: { idempotentHint: true },
-			_meta: { ui: { resourceUri: applianceAppResourceUri } },
+			_meta: {
+				ui: {
+					resourceUri: applianceAppResourceUri,
+					visibility: ['model', 'app'],
+				},
+			},
 		},
 		async ({ ids }: { ids?: Array<number> }) => {
 			const ownerId = await agent.requireOwnerId()
