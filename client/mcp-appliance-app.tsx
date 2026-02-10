@@ -85,6 +85,10 @@ type SimulationToolPayload = {
 	updatedAt: string
 }
 
+type HydrateOptions = {
+	announce: boolean
+}
+
 const appInfo = { name: 'Appliance Energy App', version: '1.0.0' }
 const appCapabilities = {
 	tools: { listChanged: false },
@@ -341,6 +345,30 @@ function isSimulationToolPayload(
 	)
 }
 
+function getToolStructuredContent(result: unknown) {
+	if (!result || typeof result !== 'object') return null
+	const payload = result as { structuredContent?: unknown }
+	return payload.structuredContent ?? null
+}
+
+function sleepWithSignal(ms: number, signal: AbortSignal) {
+	return new Promise<void>((resolve) => {
+		if (signal.aborted) {
+			resolve()
+			return
+		}
+		const timer = setTimeout(() => {
+			signal.removeEventListener('abort', onAbort)
+			resolve()
+		}, ms)
+		function onAbort() {
+			clearTimeout(timer)
+			resolve()
+		}
+		signal.addEventListener('abort', onAbort, { once: true })
+	})
+}
+
 async function requestFullscreenDisplayMode(app: App) {
 	const context = app.getHostContext()
 	const availableDisplayModes = context?.availableDisplayModes
@@ -357,6 +385,7 @@ async function requestFullscreenDisplayMode(app: App) {
 
 export function McpApplianceApp(handle: Handle) {
 	let hostContext: McpUiHostContext | undefined
+	let connectedApp: App | null = null
 	let connectionStatus: ConnectionStatus = 'connecting'
 	let connectionMessage: string | null = 'Connecting to host…'
 	let loadError: string | null = null
@@ -390,7 +419,10 @@ export function McpApplianceApp(handle: Handle) {
 		handle.update()
 	}
 
-	function hydrateFromSimulationPayload(payload: SimulationToolPayload) {
+	function hydrateFromSimulationPayload(
+		payload: SimulationToolPayload,
+		options: HydrateOptions = { announce: true },
+	) {
 		const rows = payload.appliances.map((appliance) => ({
 			id: appliance.id,
 			name: appliance.name,
@@ -399,7 +431,9 @@ export function McpApplianceApp(handle: Handle) {
 			control: normalizeControl(appliance.control),
 		}))
 		updateSimulation(rows)
-		connectionMessage = 'Simulation updated from tool result.'
+		if (options.announce) {
+			connectionMessage = 'Simulation updated from tool result.'
+		}
 		loadError = null
 		handle.update()
 	}
@@ -584,6 +618,42 @@ export function McpApplianceApp(handle: Handle) {
 		}
 	}
 
+	async function syncControlUpdateToServer(
+		app: App,
+		selectedId: number,
+		key: keyof ApplianceControl,
+		value: boolean | number | null,
+	) {
+		const update: Record<string, unknown> = { id: selectedId }
+		update[key] = value
+		const result = await app.callServerTool({
+			name: 'set_appliance_simulation_controls',
+			arguments: { updates: [update] },
+		})
+		const payload = getToolStructuredContent(result)
+		if (isSimulationToolPayload(payload)) {
+			hydrateFromSimulationPayload(payload, { announce: false })
+		}
+	}
+
+	async function startSimulationPolling(app: App, signal: AbortSignal) {
+		while (!signal.aborted) {
+			try {
+				const result = await app.callServerTool({
+					name: 'get_appliance_simulation_state',
+					arguments: {},
+				})
+				const payload = getToolStructuredContent(result)
+				if (isSimulationToolPayload(payload)) {
+					hydrateFromSimulationPayload(payload, { announce: false })
+				}
+			} catch {
+				// Ignore transient polling failures; next tick retries.
+			}
+			await sleepWithSignal(1500, signal)
+		}
+	}
+
 	async function connect(signal: AbortSignal) {
 		try {
 			connectionStatus = 'connecting'
@@ -594,15 +664,20 @@ export function McpApplianceApp(handle: Handle) {
 			const nextApp = new App(appInfo, appCapabilities)
 
 			nextApp.ontoolresult = (result) => {
-				const payload = (result as { structuredContent?: unknown })
-					.structuredContent
+				const payload = getToolStructuredContent(result)
+				if (isLaunchPayload(payload)) {
+					hydrateFromLaunchPayload(payload)
+					return
+				}
 				if (isSimulationToolPayload(payload)) {
 					hydrateFromSimulationPayload(payload)
 					return
 				}
-				if (isLaunchPayload(payload)) {
-					hydrateFromLaunchPayload(payload)
-				}
+			}
+
+			nextApp.onteardown = async () => {
+				connectedApp = null
+				return {}
 			}
 
 			nextApp.onhostcontextchanged = (context) => {
@@ -637,6 +712,7 @@ export function McpApplianceApp(handle: Handle) {
 			hostContext = nextApp.getHostContext()
 			const fullscreenRequest = await requestFullscreenDisplayMode(nextApp)
 			hostContext = nextApp.getHostContext()
+			connectedApp = nextApp
 			connectionStatus = 'connected'
 			if (hostContext?.displayMode === 'fullscreen') {
 				connectionMessage = 'Connected in fullscreen mode.'
@@ -647,7 +723,9 @@ export function McpApplianceApp(handle: Handle) {
 				connectionMessage = 'Connected in inline mode.'
 			}
 			handle.update()
+			void startSimulationPolling(nextApp, signal)
 		} catch (error) {
+			connectedApp = null
 			connectionStatus = 'error'
 			connectionMessage = null
 			const message =
@@ -673,8 +751,9 @@ export function McpApplianceApp(handle: Handle) {
 	) {
 		const selected = getSelectedAppliance()
 		if (!selected) return
+		const selectedId = selected.id
 		const nextRows = applianceRows.map((item) => {
-			if (item.id !== selected.id) return item
+			if (item.id !== selectedId) return item
 			const nextControl = normalizeControl({
 				...item.control,
 				[key]: value as never,
@@ -683,6 +762,9 @@ export function McpApplianceApp(handle: Handle) {
 		})
 		updateSimulation(nextRows)
 		handle.update()
+		if (connectedApp) {
+			void syncControlUpdateToServer(connectedApp, selectedId, key, value)
+		}
 	}
 
 	function getSafeAreaPadding() {
