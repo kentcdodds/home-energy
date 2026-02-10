@@ -566,6 +566,20 @@ export function McpApplianceApp(handle: Handle) {
 				}
 			}
 			const { appliedCount, missingTargets } = applyToolUpdates(updates)
+			if (connectedApp) {
+				try {
+					const result = await connectedApp.callServerTool({
+						name: 'set_appliance_simulation_controls',
+						arguments: { updates },
+					})
+					const serverPayload = getToolStructuredContent(result)
+					if (isSimulationToolPayload(serverPayload)) {
+						hydrateFromSimulationPayload(serverPayload, { announce: false })
+					}
+				} catch {
+					// Ignore transient sync errors; local updates already applied.
+				}
+			}
 			const payload = toSimulationToolPayload(simulation)
 			const missingText =
 				missingTargets.length > 0
@@ -595,6 +609,21 @@ export function McpApplianceApp(handle: Handle) {
 						.map((value) => Math.round(value))
 				: null
 			const changedCount = resetControls(ids)
+			if (connectedApp) {
+				try {
+					const serverArguments = ids == null ? {} : { ids }
+					const result = await connectedApp.callServerTool({
+						name: 'reset_appliance_simulation_controls',
+						arguments: serverArguments,
+					})
+					const serverPayload = getToolStructuredContent(result)
+					if (isSimulationToolPayload(serverPayload)) {
+						hydrateFromSimulationPayload(serverPayload, { announce: false })
+					}
+				} catch {
+					// Ignore transient sync errors; local reset already applied.
+				}
+			}
 			const payload = toSimulationToolPayload(simulation)
 			return {
 				content: [
