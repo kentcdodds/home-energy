@@ -82,6 +82,7 @@ type SimulationToolPayload = {
 	}>
 	totals: SimulationTotals
 	hourlyLoadWatts: Array<number>
+	applianceCount: number
 	updatedAt: string
 }
 
@@ -317,6 +318,7 @@ function toSimulationToolPayload(
 		})),
 		totals: snapshot.totals,
 		hourlyLoadWatts: snapshot.hourlyLoadWatts,
+		applianceCount: snapshot.appliances.length,
 		updatedAt: new Date().toISOString(),
 	}
 }
@@ -347,6 +349,7 @@ function isSimulationToolPayload(
 	if (payload.ok !== true) return false
 	if (!Array.isArray(payload.appliances)) return false
 	if (!Array.isArray(payload.hourlyLoadWatts)) return false
+	if (typeof payload.applianceCount !== 'number') return false
 	if (!payload.totals || typeof payload.totals !== 'object') return false
 	return (
 		typeof payload.updatedAt === 'string' &&
@@ -418,6 +421,7 @@ export function McpApplianceApp(handle: Handle) {
 	let connectedApp: App | null = null
 	let pollingAbortController: AbortController | null = null
 	let simulationSocket: WebSocket | null = null
+	let latestControlSyncId = 0
 	let connectionStatus: ConnectionStatus = 'connecting'
 	let connectionMessage: string | null = 'Connecting to host…'
 	let loadError: string | null = null
@@ -685,15 +689,22 @@ export function McpApplianceApp(handle: Handle) {
 		key: keyof ApplianceControl,
 		value: boolean | number | null,
 	) {
-		const update: Record<string, unknown> = { id: selectedId }
-		update[key] = value
-		const result = await app.callServerTool({
-			name: 'set_appliance_simulation_controls',
-			arguments: { updates: [update] },
-		})
-		const payload = getToolStructuredContent(result)
-		if (isSimulationToolPayload(payload)) {
-			hydrateFromSimulationPayload(payload, { announce: false })
+		const requestId = latestControlSyncId + 1
+		latestControlSyncId = requestId
+		try {
+			const update: Record<string, unknown> = { id: selectedId }
+			update[key] = value
+			const result = await app.callServerTool({
+				name: 'set_appliance_simulation_controls',
+				arguments: { updates: [update] },
+			})
+			if (requestId !== latestControlSyncId) return
+			const payload = getToolStructuredContent(result)
+			if (isSimulationToolPayload(payload)) {
+				hydrateFromSimulationPayload(payload, { announce: false })
+			}
+		} catch {
+			// Ignore transient sync failures; polling/stream keeps state in sync.
 		}
 	}
 
@@ -810,12 +821,12 @@ export function McpApplianceApp(handle: Handle) {
 
 			nextApp.ontoolresult = (result) => {
 				const payload = getToolStructuredContent(result)
-				if (isLaunchPayload(payload)) {
-					hydrateFromLaunchPayload(payload)
-					return
-				}
 				if (isSimulationToolPayload(payload)) {
 					hydrateFromSimulationPayload(payload)
+					return
+				}
+				if (isLaunchPayload(payload)) {
+					hydrateFromLaunchPayload(payload)
 					return
 				}
 			}

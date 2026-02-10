@@ -140,14 +140,14 @@ const applianceEditSchema = z
 			data.name != null || data.notes !== undefined || hasPowerInput
 		if (!hasUpdates) {
 			context.addIssue({
-				code: z.ZodIssueCode.custom,
+				code: 'custom',
 				message: 'Provide at least one field to update.',
 			})
 		}
 		if (hasPowerInput && data.watts == null) {
 			if (data.amps == null || data.volts == null) {
 				context.addIssue({
-					code: z.ZodIssueCode.custom,
+					code: 'custom',
 					message: 'Provide watts or amps and volts.',
 				})
 			}
@@ -169,7 +169,7 @@ const applianceControlUpdateSchema = z
 		const hasTarget = data.id != null || data.name != null
 		if (!hasTarget) {
 			context.addIssue({
-				code: z.ZodIssueCode.custom,
+				code: 'custom',
 				message: 'Provide appliance id or appliance name to update.',
 			})
 		}
@@ -182,7 +182,7 @@ const applianceControlUpdateSchema = z
 			data.overrideWatts !== undefined
 		if (!hasControlUpdate) {
 			context.addIssue({
-				code: z.ZodIssueCode.custom,
+				code: 'custom',
 				message: 'Provide at least one control field to update.',
 			})
 		}
