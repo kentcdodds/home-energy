@@ -397,12 +397,12 @@ function toSimulationToolPayload(
 	}
 }
 
-function syncStoredSimulationControls(
+async function syncStoredSimulationControls(
 	agent: MCP,
 	ownerId: number,
 	appliances: Array<ApplianceSummary>,
 ) {
-	const controls = agent.getSimulationControls(ownerId)
+	const controls = await agent.getSimulationControls(ownerId)
 	const knownIds = new Set(appliances.map((item) => item.id))
 	let removedCount = 0
 	for (const id of controls.keys()) {
@@ -411,7 +411,7 @@ function syncStoredSimulationControls(
 		removedCount += 1
 	}
 	if (removedCount > 0) {
-		agent.setSimulationControls(ownerId, controls)
+		await agent.setSimulationControls(ownerId, controls)
 	}
 	return controls
 }
@@ -428,7 +428,7 @@ function withSimulationControls(
 	}))
 }
 
-function persistSimulationControls(
+async function persistSimulationControls(
 	agent: MCP,
 	ownerId: number,
 	appliances: Array<ApplianceWithControl>,
@@ -437,7 +437,7 @@ function persistSimulationControls(
 	for (const appliance of appliances) {
 		controls.set(appliance.id, appliance.control)
 	}
-	agent.setSimulationControls(ownerId, controls)
+	await agent.setSimulationControls(ownerId, controls)
 }
 
 function findApplianceIndexForUpdate(
@@ -505,7 +505,7 @@ async function getSimulationSnapshot(agent: MCP, ownerId: number) {
 	const store = createStore(agent)
 	const list = await store.listByOwner(ownerId)
 	const summary = summarizeAppliances(list.map(toSummary))
-	const controls = syncStoredSimulationControls(
+	const controls = await syncStoredSimulationControls(
 		agent,
 		ownerId,
 		summary.appliances,
@@ -849,7 +849,7 @@ export async function registerTools(agent: MCP) {
 			)
 			const { nextAppliances, appliedCount, missingTargets } =
 				applySimulationControlUpdates(appliancesWithControl, updates)
-			persistSimulationControls(agent, ownerId, nextAppliances)
+			await persistSimulationControls(agent, ownerId, nextAppliances)
 			const snapshot = calculateSimulation(nextAppliances)
 			const payload = {
 				...toSimulationToolPayload(snapshot),
@@ -893,7 +893,7 @@ export async function registerTools(agent: MCP) {
 		},
 		async ({ ids }: { ids?: Array<number> }) => {
 			const ownerId = await agent.requireOwnerId()
-			const controls = agent.getSimulationControls(ownerId)
+			const controls = await agent.getSimulationControls(ownerId)
 			let resetCount = 0
 			if (ids == null) {
 				resetCount = controls.size
@@ -905,7 +905,7 @@ export async function registerTools(agent: MCP) {
 					}
 				}
 			}
-			agent.setSimulationControls(ownerId, controls)
+			await agent.setSimulationControls(ownerId, controls)
 			const { snapshot } = await getSimulationSnapshot(agent, ownerId)
 			const payload = {
 				...toSimulationToolPayload(snapshot),

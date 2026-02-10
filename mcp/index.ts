@@ -46,10 +46,7 @@ export type Props = {
 	user?: TokenSummary['grant']['props']
 }
 export class MCP extends McpAgent<Env, State, Props> {
-	private simulationControlsByOwner = new Map<
-		number,
-		Map<number, ApplianceSimulationControl>
-	>()
+	private simulationControlsKeyPrefix = 'mcp:simulation-controls'
 	server = new McpServer(
 		{
 			name: 'MCP',
@@ -85,20 +82,41 @@ export class MCP extends McpAgent<Env, State, Props> {
 		return createDb(this.env.APP_DB)
 	}
 
-	getSimulationControls(ownerId: number) {
-		const controls = this.simulationControlsByOwner.get(ownerId)
-		return controls ? new Map(controls) : new Map()
+	private getSimulationControlsKey(ownerId: number) {
+		return `${this.simulationControlsKeyPrefix}:${ownerId}`
 	}
 
-	setSimulationControls(
+	async getSimulationControls(ownerId: number) {
+		const key = this.getSimulationControlsKey(ownerId)
+		const stored = await this.env.OAUTH_KV.get(key, 'json')
+		if (!stored || typeof stored !== 'object') {
+			return new Map<number, ApplianceSimulationControl>()
+		}
+		const controls = new Map<number, ApplianceSimulationControl>()
+		for (const [idText, control] of Object.entries(
+			stored as Record<string, ApplianceSimulationControl>,
+		)) {
+			const id = Number(idText)
+			if (!Number.isInteger(id) || id <= 0) continue
+			if (!control || typeof control !== 'object') continue
+			controls.set(id, control)
+		}
+		return controls
+	}
+
+	async setSimulationControls(
 		ownerId: number,
 		controls: Map<number, ApplianceSimulationControl>,
 	) {
+		const key = this.getSimulationControlsKey(ownerId)
 		if (controls.size === 0) {
-			this.simulationControlsByOwner.delete(ownerId)
+			await this.env.OAUTH_KV.delete(key)
 			return
 		}
-		this.simulationControlsByOwner.set(ownerId, new Map(controls))
+		const payload = Object.fromEntries(
+			Array.from(controls.entries(), ([id, control]) => [String(id), control]),
+		)
+		await this.env.OAUTH_KV.put(key, JSON.stringify(payload))
 	}
 
 	async requireOwnerId() {
