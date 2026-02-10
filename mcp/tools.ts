@@ -244,7 +244,7 @@ function createStore(agent: MCP) {
 }
 
 function formatKwh(value: number) {
-	return `${value.toFixed(2)}kWh`
+	return `${value.toFixed(2)} kWh`
 }
 
 function clampNumber(value: number, min: number, max: number) {
