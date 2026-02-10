@@ -29,7 +29,9 @@ function toSimulationControl(
 	const startHour = toFiniteNumber(candidate.startHour)
 	const quantity = toFiniteNumber(candidate.quantity)
 	const overrideWatts =
-		candidate.overrideWatts == null ? null : toFiniteNumber(candidate.overrideWatts)
+		candidate.overrideWatts == null
+			? null
+			: toFiniteNumber(candidate.overrideWatts)
 	if (typeof candidate.enabled !== 'boolean') return null
 	if (hoursPerDay == null) return null
 	if (dutyCyclePercent == null) return null
