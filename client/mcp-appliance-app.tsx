@@ -86,6 +86,10 @@ type SimulationToolPayload = {
 }
 
 const appInfo = { name: 'Appliance Energy App', version: '1.0.0' }
+const appCapabilities = {
+	tools: { listChanged: false },
+	availableDisplayModes: ['inline', 'fullscreen'],
+} satisfies NonNullable<ConstructorParameters<typeof App>[1]>
 
 const appToolDefinitions: Array<Tool> = [
 	{
@@ -320,6 +324,20 @@ function isLaunchPayload(value: unknown): value is LaunchPayload {
 	)
 }
 
+async function requestFullscreenDisplayMode(app: App) {
+	const context = app.getHostContext()
+	const availableDisplayModes = context?.availableDisplayModes
+	if (!availableDisplayModes?.includes('fullscreen')) {
+		return { attempted: false, granted: context?.displayMode === 'fullscreen' }
+	}
+	try {
+		const result = await app.requestDisplayMode({ mode: 'fullscreen' })
+		return { attempted: true, granted: result.mode === 'fullscreen' }
+	} catch {
+		return { attempted: true, granted: false }
+	}
+}
+
 export function McpApplianceApp(handle: Handle) {
 	let hostContext: McpUiHostContext | undefined
 	let connectionStatus: ConnectionStatus = 'connecting'
@@ -542,7 +560,7 @@ export function McpApplianceApp(handle: Handle) {
 			loadError = null
 			handle.update()
 
-			const nextApp = new App(appInfo, { tools: { listChanged: false } })
+			const nextApp = new App(appInfo, appCapabilities)
 
 			nextApp.ontoolresult = (result) => {
 				const payload = (result as { structuredContent?: unknown })
@@ -581,8 +599,17 @@ export function McpApplianceApp(handle: Handle) {
 			// connect() resolved successfully, so prefer connected state even if this
 			// task signal was aborted during intermediate updates.
 			hostContext = nextApp.getHostContext()
+			const fullscreenRequest = await requestFullscreenDisplayMode(nextApp)
+			hostContext = nextApp.getHostContext()
 			connectionStatus = 'connected'
-			connectionMessage = 'Connected.'
+			if (hostContext?.displayMode === 'fullscreen') {
+				connectionMessage = 'Connected in fullscreen mode.'
+			} else if (fullscreenRequest.attempted) {
+				connectionMessage =
+					'Connected. Host kept inline mode after fullscreen request.'
+			} else {
+				connectionMessage = 'Connected in inline mode.'
+			}
 			handle.update()
 		} catch (error) {
 			connectionStatus = 'error'

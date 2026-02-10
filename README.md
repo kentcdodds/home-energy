@@ -44,7 +44,8 @@ clients.
 The MCP server now includes an app-launch tool that opens an interactive
 simulator UI with per-appliance knobs. App-side interactions stay local to the
 UI session, and server simulation tools keep a session-scoped control state so
-models can iteratively adjust scenarios. Both flows calculate:
+models can iteratively adjust scenarios. The app also requests fullscreen mode
+on connect when the host supports it. Both flows calculate:
 
 - Per-appliance daily kWh
 - Total daily kWh
