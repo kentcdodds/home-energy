@@ -324,6 +324,21 @@ function isLaunchPayload(value: unknown): value is LaunchPayload {
 	)
 }
 
+function isSimulationToolPayload(value: unknown): value is SimulationToolPayload {
+	if (!value || typeof value !== 'object') return false
+	const payload = value as Record<string, unknown>
+	if (payload.ok !== true) return false
+	if (!Array.isArray(payload.appliances)) return false
+	if (!Array.isArray(payload.hourlyLoadWatts)) return false
+	if (!payload.totals || typeof payload.totals !== 'object') return false
+	return (
+		typeof payload.updatedAt === 'string' &&
+		typeof (payload.totals as Record<string, unknown>).dailyKwh === 'number' &&
+		typeof (payload.totals as Record<string, unknown>).peakWatts === 'number' &&
+		typeof (payload.totals as Record<string, unknown>).averageWatts === 'number'
+	)
+}
+
 async function requestFullscreenDisplayMode(app: App) {
 	const context = app.getHostContext()
 	const availableDisplayModes = context?.availableDisplayModes
@@ -369,6 +384,20 @@ export function McpApplianceApp(handle: Handle) {
 		const rows = payload.appliances.map(buildApplianceWithControl)
 		updateSimulation(rows)
 		connectionMessage = `Loaded ${payload.applianceCount} appliance(s).`
+		loadError = null
+		handle.update()
+	}
+
+	function hydrateFromSimulationPayload(payload: SimulationToolPayload) {
+		const rows = payload.appliances.map((appliance) => ({
+			id: appliance.id,
+			name: appliance.name,
+			watts: appliance.baseWatts,
+			notes: appliance.notes,
+			control: normalizeControl(appliance.control),
+		}))
+		updateSimulation(rows)
+		connectionMessage = 'Simulation updated from tool result.'
 		loadError = null
 		handle.update()
 	}
@@ -565,8 +594,13 @@ export function McpApplianceApp(handle: Handle) {
 			nextApp.ontoolresult = (result) => {
 				const payload = (result as { structuredContent?: unknown })
 					.structuredContent
-				if (!isLaunchPayload(payload)) return
-				hydrateFromLaunchPayload(payload)
+				if (isLaunchPayload(payload)) {
+					hydrateFromLaunchPayload(payload)
+					return
+				}
+				if (isSimulationToolPayload(payload)) {
+					hydrateFromSimulationPayload(payload)
+				}
 			}
 
 			nextApp.onhostcontextchanged = (context) => {
